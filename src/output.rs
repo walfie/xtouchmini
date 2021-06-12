@@ -5,13 +5,13 @@ pub enum Command {
         button: Button,
         state: ButtonLight,
     },
-    ChangeLayer {
+    SetLayer {
         layer: Layer,
     },
-    ChangeMode {
+    SetMode {
         mc: bool,
     },
-    ChangeRingLedBehavior {
+    SetRingLedBehavior {
         knob: Knob,
         behavior: RingLedBehavior,
     },
@@ -35,7 +35,7 @@ impl Command {
                 // 0x90 [0..15] n Set button LED 0=off, 1=on, 2=blink
                 vec![0x90, button.to_index() - 1, state.as_u8()]
             }
-            ChangeLayer { layer } => {
+            SetLayer { layer } => {
                 // 0xC0 n Select layer 0=Layer A (default), 1=Layer B (ONLY IF NOT IN MC MODE)
                 let layer_value = match layer {
                     Layer::A => 0,
@@ -44,11 +44,11 @@ impl Command {
 
                 vec![0xc0, layer_value]
             }
-            ChangeMode { mc } => {
+            SetMode { mc } => {
                 // 0xB0 127 n Set mode 0=standard (default), 1=MC
                 vec![0xb0, 127, if *mc { 1 } else { 0 }]
             }
-            ChangeRingLedBehavior { knob, behavior } => {
+            SetRingLedBehavior { knob, behavior } => {
                 // 0xB0 [1..8] n Set LED ring mode 0=single, 1=pan, 2=fan, 3=spread, 4=trim
                 vec![0xb0, knob.to_index(), behavior.as_u8()]
             }

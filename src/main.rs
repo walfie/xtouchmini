@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     /*
-    conn_out.send(&Command::ChangeLayer { layer: Layer::A }.as_bytes())?;
+    conn_out.send(&Command::SetLayer { layer: Layer::A }.as_bytes())?;
 
     conn_out.send(
         &Command::SetButtonLight {
@@ -82,7 +82,7 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     conn_out.send(
-        &Command::ChangeRingLedBehavior {
+        &Command::SetRingLedBehavior {
             knob: Knob::Knob3,
             behavior: RingLedBehavior::Trim,
         }
@@ -97,7 +97,7 @@ fn main() -> anyhow::Result<()> {
         .as_bytes(),
     )?;
 
-    conn_out.send(&Command::ChangeLayer { layer: Layer::B }.as_bytes())?;
+    conn_out.send(&Command::SetLayer { layer: Layer::B }.as_bytes())?;
 
     conn_out.send(
         &Command::SetButtonLight {

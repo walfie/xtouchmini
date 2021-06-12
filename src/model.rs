@@ -8,9 +8,9 @@ pub struct State {
 
 impl State {
     pub fn to_commands(&self) -> Vec<Command> {
-        let mut out = vec![Command::ChangeLayer { layer: Layer::B }];
+        let mut out = vec![Command::SetLayer { layer: Layer::B }];
         out.append(&mut self.layer_b.to_commands());
-        out.push(Command::ChangeLayer { layer: Layer::A });
+        out.push(Command::SetLayer { layer: Layer::A });
         out.append(&mut self.layer_a.to_commands());
         out
     }
@@ -37,7 +37,7 @@ impl Layout {
                     knob,
                     lighting: state.lighting,
                 });
-                out.push(Command::ChangeRingLedBehavior {
+                out.push(Command::SetRingLedBehavior {
                     knob,
                     behavior: state.behavior,
                 });
