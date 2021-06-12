@@ -1,4 +1,4 @@
-use crate::model::{Button, ButtonLight, Knob, Layer, RingLedBehavior, RingLighting};
+use crate::model::{Button, ButtonLight, CcValue, Knob, Layer, RingLedBehavior, RingLighting};
 use crate::MIDI_DEVICE_NAME;
 use anyhow::{Context as _, Result};
 use futures::channel::mpsc;
@@ -73,7 +73,7 @@ pub enum Command {
     },
     SetKnobValue {
         knob: Knob,
-        value: u8,
+        value: CcValue,
     },
 }
 
@@ -106,7 +106,7 @@ impl Command {
             }
             SetKnobValue { knob, value } => {
                 // 0xBA [1..8] n Set knob position to n
-                vec![0xba, knob.to_index(), *value]
+                vec![0xba, knob.to_index(), value.0]
             }
             SetRingLighting { knob, lighting } => {
                 // 0xB0 [9..16] n Set LED ring illumination 0=off [1..13]=on, [14..26]=blink, 26=all on, 27=all blink

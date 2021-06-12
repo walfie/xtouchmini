@@ -1,5 +1,31 @@
 use crate::output::Command;
 
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+pub struct CcValue(pub u8);
+
+impl CcValue {
+    pub fn percentage(&self) -> f64 {
+        self.0 as f64 / Self::MAX.0 as f64
+    }
+
+    pub fn is_max(&self) -> bool {
+        self.0 >= Self::MAX.0
+    }
+
+    pub fn is_min(&self) -> bool {
+        self.0 <= Self::MIN.0
+    }
+
+    pub const MIN: Self = Self(0);
+    pub const MAX: Self = Self(127);
+}
+
+impl From<u8> for CcValue {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct State {
     layer_a: Layout,
@@ -115,12 +141,12 @@ impl Default for ButtonPressed {
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
 pub struct FaderState {
-    pub value: u8,
+    pub value: CcValue,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct KnobState {
-    pub value: u8,
+    pub value: CcValue,
     pub lighting: RingLighting,
     pub behavior: RingLedBehavior,
 }

@@ -1,4 +1,4 @@
-use crate::model::{Button, ButtonPressed, Knob, Layer};
+use crate::model::{Button, ButtonPressed, CcValue, Knob, Layer};
 use crate::MIDI_DEVICE_NAME;
 use anyhow::{bail, Context as _, Result};
 use futures::channel::mpsc;
@@ -87,14 +87,14 @@ pub enum Event {
     },
     KnobChange {
         knob: Knob,
-        value: u8,
+        value: CcValue,
     },
     KnobPress {
         knob: Knob,
         state: ButtonPressed,
     },
     FaderChange {
-        value: u8,
+        value: CcValue,
     },
 }
 
@@ -104,6 +104,7 @@ impl TryFrom<&[u8]> for EventWithLayer {
     fn try_from(bytes: &[u8]) -> anyhow::Result<EventWithLayer> {
         Ok(match bytes {
             &[186, channel, value] => {
+                let value = CcValue::from(value);
                 let (layer, knob) = match channel {
                     1..=8 => (
                         Layer::A,
