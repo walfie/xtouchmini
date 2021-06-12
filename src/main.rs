@@ -1,90 +1,41 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use futures::StreamExt;
-use midir::{MidiOutput, MidiOutputConnection};
-use std::io::stdin;
 
-use xtouchmini::model::State;
-use xtouchmini::EventStream;
-
-const MIDI_DEVICE_NAME: &'static str = "X-TOUCH MINI";
-
-fn get_output_port(port_name: &str) -> Result<MidiOutputConnection> {
-    let midi_out = MidiOutput::new(port_name)?;
-
-    let ports = midi_out.ports();
-
-    let out_port = ports
-        .iter()
-        .find(|port| midi_out.port_name(port).as_deref() == Ok(MIDI_DEVICE_NAME))
-        .with_context(|| format!("could not find device {}", MIDI_DEVICE_NAME))?;
-
-    let conn_out = midi_out
-        .connect(out_port, port_name)
-        .map_err(|e| midir::ConnectError::new(e.kind(), ()))?;
-
-    Ok(conn_out)
-}
+use xtouchmini::model::{Button, ButtonPressed, State};
+use xtouchmini::{Controller, Event, EventStream};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let mut stream = EventStream::new()?;
-
-    tokio::spawn(async move {
-        while let Some(event_opt) = stream.next().await {
-            if let Ok(event) = event_opt {
-                println!("{:?}", event);
-            }
-        }
-    });
-
-    let mut conn_out = get_output_port("output-reader")?;
+async fn main() -> Result<()> {
+    let (mut controller, worker) = Controller::new()?;
 
     let state = State::default();
     for command in state.to_commands() {
-        conn_out.send(&command.as_bytes())?;
+        controller.send(command)?;
     }
 
-    /*
-    conn_out.send(&Command::SetLayer { layer: Layer::A }.as_bytes())?;
+    tokio::spawn(worker);
 
-    conn_out.send(
-        &Command::SetButtonLight {
-            button: Button::Button5,
-            state: ButtonLight::On,
+    let mut stream = EventStream::new()?;
+
+    while let Some(event_opt) = stream.next().await {
+        if let Ok(event) = event_opt {
+            println!("{:?}", event);
+
+            if let Event::ButtonPress {
+                button: Button::Button16,
+                state: ButtonPressed::Down,
+            } = event.event
+            {
+                // Reset
+                let state = State::default();
+                for command in state.to_commands() {
+                    if let Err(e) = controller.send(command) {
+                        eprintln!("{}", e);
+                    }
+                }
+            }
         }
-        .as_bytes(),
-    )?;
+    }
 
-    conn_out.send(
-        &Command::SetRingLedBehavior {
-            knob: Knob::Knob3,
-            behavior: RingLedBehavior::Trim,
-        }
-        .as_bytes(),
-    )?;
-
-    conn_out.send(
-        &Command::SetKnobValue {
-            knob: Knob::Knob4,
-            value: 60,
-        }
-        .as_bytes(),
-    )?;
-
-    conn_out.send(&Command::SetLayer { layer: Layer::B }.as_bytes())?;
-
-    conn_out.send(
-        &Command::SetButtonLight {
-            button: Button::Button2,
-            state: ButtonLight::On,
-        }
-        .as_bytes(),
-    )?;
-    */
-
-    let mut input = String::new();
-    stdin().read_line(&mut input)?; // wait for next enter key press
-
-    println!("Closing connection");
     Ok(())
 }

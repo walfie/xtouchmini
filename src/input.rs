@@ -21,7 +21,9 @@ impl EventStream {
     pub fn new() -> Result<Self> {
         let (tx, rx) = mpsc::unbounded();
         let connection = get_input_port(MIDI_DEVICE_NAME, move |event| {
-            let _ = tx.unbounded_send(event);
+            if let Err(e) = tx.unbounded_send(event) {
+                eprintln!("Failed to send: {}", e);
+            }
         })?;
 
         Ok(EventStream {

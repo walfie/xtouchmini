@@ -1,5 +1,58 @@
 use crate::model::{Button, ButtonLight, Knob, Layer, RingLedBehavior, RingLighting};
+use crate::MIDI_DEVICE_NAME;
+use anyhow::{Context as _, Result};
+use futures::channel::mpsc;
+use futures::StreamExt;
+use midir::{MidiOutput, MidiOutputConnection};
+use std::future::Future;
 
+pub struct Controller {
+    sender: mpsc::UnboundedSender<Command>,
+}
+
+impl Controller {
+    pub fn new() -> Result<(Self, impl Future<Output = ()>)> {
+        let (tx, mut rx) = mpsc::unbounded::<Command>();
+        let mut connection = get_output_port(MIDI_DEVICE_NAME)?;
+
+        let worker = async move {
+            while let Some(command) = rx.next().await {
+                println!("Received command: {:?}", command);
+                if let Err(e) = connection.send(&command.as_bytes()) {
+                    // TODO
+                    eprintln!("Failed to send: {}", e);
+                }
+            }
+        };
+
+        let controller = Self { sender: tx };
+
+        Ok((controller, worker))
+    }
+
+    pub fn send(&mut self, command: Command) -> Result<()> {
+        Ok(self.sender.unbounded_send(command)?)
+    }
+}
+
+fn get_output_port(port_name: &str) -> Result<MidiOutputConnection> {
+    let midi_out = MidiOutput::new(port_name)?;
+
+    let ports = midi_out.ports();
+
+    let out_port = ports
+        .iter()
+        .find(|port| midi_out.port_name(port).as_deref() == Ok(MIDI_DEVICE_NAME))
+        .with_context(|| format!("could not find device {}", MIDI_DEVICE_NAME))?;
+
+    let conn_out = midi_out
+        .connect(out_port, port_name)
+        .map_err(|e| midir::ConnectError::new(e.kind(), ()))?;
+
+    Ok(conn_out)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
     SetButtonLight {
         button: Button,
