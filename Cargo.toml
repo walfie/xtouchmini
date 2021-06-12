@@ -1,0 +1,11 @@
+[package]
+name = "xtouchmini"
+version = "0.1.0"
+authors = ["Walfie <walfington@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1.0.41"
+autopilot = "0.4.0"
+midir = "0.7.0"
+osascript = "0.3.0"
