@@ -1,15 +1,10 @@
-mod input;
-mod model;
-mod output;
-
 use anyhow::{Context, Result};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::convert::TryFrom;
 use std::io::stdin;
 
-use crate::input::EventWithLayer;
-use crate::model::{Button, ButtonLight, Knob, Layer, RingLedBehavior, State};
-use crate::output::Command;
+use xtouchmini::input::EventWithLayer;
+use xtouchmini::model::State;
 
 const MIDI_DEVICE_NAME: &'static str = "X-TOUCH MINI";
 

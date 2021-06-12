@@ -19,11 +19,31 @@ impl State {
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Layout {
     knobs: [KnobState; 8],
-    buttons: [ButtonLight; 16],
+    buttons: [ButtonState; 16],
     fader: FaderState,
 }
 
 impl Layout {
+    pub fn knob(&mut self, knob: &Knob) -> &KnobState {
+        &self.knobs[knob.to_index() as usize - 1]
+    }
+
+    pub fn knob_mut(&mut self, knob: &Knob) -> &mut KnobState {
+        &mut self.knobs[knob.to_index() as usize - 1]
+    }
+
+    pub fn button(&mut self, button: &Button) -> &ButtonState {
+        &self.buttons[button.to_index() as usize - 1]
+    }
+
+    pub fn button_mut(&mut self, button: &Button) -> &mut ButtonState {
+        &mut self.buttons[button.to_index() as usize - 1]
+    }
+
+    pub fn fader(&self) -> &FaderState {
+        &self.fader
+    }
+
     pub fn to_commands(&self) -> Vec<Command> {
         let mut out = Vec::new();
 
@@ -48,12 +68,30 @@ impl Layout {
             if let Some(button) = Button::from_index(index as u8 + 1) {
                 out.push(Command::SetButtonLight {
                     button,
-                    state: *state,
+                    state: state.light,
                 });
             }
         }
 
         out
+    }
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct ButtonState {
+    pressed: ButtonPressed,
+    light: ButtonLight,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ButtonPressed {
+    Up,
+    Down,
+}
+
+impl Default for ButtonPressed {
+    fn default() -> Self {
+        Self::Up
     }
 }
 

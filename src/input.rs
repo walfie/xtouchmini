@@ -1,4 +1,4 @@
-use crate::model::{Button, Knob, Layer};
+use crate::model::{Button, ButtonPressed, Knob, Layer};
 use anyhow::{bail, Context};
 use std::convert::TryFrom;
 
@@ -9,17 +9,22 @@ pub struct EventWithLayer {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ButtonState {
-    Down,
-    Up,
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub enum Event {
-    ButtonPress { button: Button, state: ButtonState },
-    KnobChange { knob: Knob, value: u8 },
-    KnobPress { knob: Knob, state: ButtonState },
-    FaderChange { value: u8 },
+    ButtonPress {
+        button: Button,
+        state: ButtonPressed,
+    },
+    KnobChange {
+        knob: Knob,
+        value: u8,
+    },
+    KnobPress {
+        knob: Knob,
+        state: ButtonPressed,
+    },
+    FaderChange {
+        value: u8,
+    },
 }
 
 impl TryFrom<&[u8]> for EventWithLayer {
@@ -60,8 +65,8 @@ impl TryFrom<&[u8]> for EventWithLayer {
 
             &[action, channel, _value] => {
                 let state = match action {
-                    154 => ButtonState::Down,
-                    138 => ButtonState::Up,
+                    154 => ButtonPressed::Down,
+                    138 => ButtonPressed::Up,
                     _ => bail!("unknown action {}", action),
                 };
 
