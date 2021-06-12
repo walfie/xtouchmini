@@ -6,7 +6,7 @@ use anyhow::Result;
 use autopilot::key::{Character, Code, Flag, KeyCode};
 use futures::StreamExt;
 use structopt::StructOpt;
-use xtouchmini::model::{Button, ButtonPressed, CcValue, Knob, State};
+use xtouchmini::model::{Button, ButtonPressed, CcValue, Knob, Layer, State};
 use xtouchmini::{Command, Controller, Event, EventStream};
 
 const INPUT_DELAY: u64 = 0;
@@ -39,15 +39,16 @@ async fn main() -> Result<()> {
                 ButtonPress {
                     button,
                     state: ButtonPressed::Down,
-                } => handle_button_press(&client, &mut controller, button).await,
+                } => handle_button_press(&client, &mut controller, event.layer, button).await,
                 KnobPress {
                     knob,
                     state: ButtonPressed::Down,
-                } => handle_knob_press(&client, &mut controller, knob).await,
+                } => handle_knob_press(&client, &mut controller, event.layer, knob).await,
                 KnobChange { knob, value } => {
                     let out = handle_knob_change(
                         &client,
                         &mut controller,
+                        event.layer,
                         knob,
                         &Delta::new(layout.knob(&knob).value, value),
                     )
@@ -56,9 +57,13 @@ async fn main() -> Result<()> {
                     out
                 }
                 FaderChange { value } => {
-                    let out =
-                        handle_fader_change(&client, &Delta::new(layout.fader().value, value))
-                            .await;
+                    let out = handle_fader_change(
+                        &client,
+                        &mut controller,
+                        event.layer,
+                        &Delta::new(layout.fader().value, value),
+                    )
+                    .await;
                     layout.fader_mut().value = value;
                     out
                 }
@@ -77,6 +82,7 @@ async fn main() -> Result<()> {
 async fn handle_knob_press(
     client: &obws::Client,
     controller: &mut Controller,
+    layer: Layer,
     knob: Knob,
 ) -> Result<()> {
     match knob {
@@ -105,11 +111,15 @@ async fn handle_knob_press(
 async fn handle_button_press(
     client: &obws::Client,
     controller: &mut Controller,
+    layer: Layer,
     button: Button,
 ) -> Result<()> {
     match button {
         Button::Button1 => {
             type_text(":_lighto::_hmm::_lighto:");
+        }
+        Button::Button2 => {
+            type_text(":_hic1::_hic2::_hic3:");
         }
         Button::Button7 => {
             autopilot::key::tap(
@@ -200,25 +210,36 @@ fn type_string_or_backspace(string: &str, delta: &Delta) {
 async fn handle_knob_change(
     client: &obws::Client,
     controller: &mut Controller,
+    layer: Layer,
     knob: Knob,
     delta: &Delta,
 ) -> Result<()> {
+    let wrap_around = |controller: &mut Controller| {
+        if delta.magnitude() == 0 {
+            if delta.current.is_max() {
+                controller.send(Command::SetKnobValue {
+                    knob,
+                    value: CcValue::MIN,
+                })
+            } else {
+                controller.send(Command::SetKnobValue {
+                    knob,
+                    value: CcValue::MAX,
+                })
+            }
+        } else {
+            Ok(())
+        }
+    };
+
     match knob {
         Knob::Knob1 => type_string_or_backspace("yo", delta),
+        Knob::Knob2 => type_string_or_backspace("Let's go", delta),
+
+        Knob::Knob7 => {}
+
         Knob::Knob8 => {
-            if delta.magnitude() == 0 {
-                if delta.current.is_max() {
-                    controller.send(Command::SetKnobValue {
-                        knob,
-                        value: CcValue::MIN,
-                    })?;
-                } else if delta.current.is_min() {
-                    controller.send(Command::SetKnobValue {
-                        knob,
-                        value: CcValue::MAX,
-                    })?;
-                }
-            }
+            wrap_around(controller)?;
 
             let props = obws::requests::SceneItemProperties {
                 item: either::Either::Left("VTubeStudio NDI"),
@@ -237,7 +258,27 @@ async fn handle_knob_change(
     Ok(())
 }
 
-async fn handle_fader_change(client: &obws::Client, delta: &Delta) -> Result<()> {
-    type_string_or_backspace("Let's go", delta);
+async fn handle_fader_change(
+    client: &obws::Client,
+    controller: &mut Controller,
+    layer: Layer,
+    delta: &Delta,
+) -> Result<()> {
+    if layer == Layer::A {
+        type_string_or_backspace("Let's go", delta);
+    } else {
+        let scale = Some(delta.current.percentage() * 3.);
+        let props = obws::requests::SceneItemProperties {
+            item: either::Either::Left("VTubeStudio NDI"),
+            scale: Some(obws::requests::Scale { x: scale, y: scale }),
+            ..Default::default()
+        };
+
+        client
+            .scene_items()
+            .set_scene_item_properties(props)
+            .await?;
+    }
+
     Ok(())
 }
