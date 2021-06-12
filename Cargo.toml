@@ -7,5 +7,8 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.41"
 autopilot = "0.4.0"
+futures = "0.3.15"
 midir = "0.7.0"
 osascript = "0.3.0"
+pin-project-lite = "0.2.6"
+tokio = { version = "1.6.1", features = ["full"] }

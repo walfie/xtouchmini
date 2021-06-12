@@ -1,40 +1,12 @@
 use anyhow::{Context, Result};
-use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
-use std::convert::TryFrom;
+use futures::StreamExt;
+use midir::{MidiOutput, MidiOutputConnection};
 use std::io::stdin;
 
-use xtouchmini::input::EventWithLayer;
 use xtouchmini::model::State;
+use xtouchmini::EventStream;
 
 const MIDI_DEVICE_NAME: &'static str = "X-TOUCH MINI";
-
-fn get_input_port<F>(port_name: &str, handler: F) -> Result<MidiInputConnection<()>>
-where
-    F: Fn(Result<EventWithLayer>) + Send + 'static,
-{
-    let mut midi_in = MidiInput::new(port_name)?;
-    midi_in.ignore(Ignore::None);
-
-    let ports = midi_in.ports();
-
-    let in_port = ports
-        .iter()
-        .find(|port| midi_in.port_name(port).as_deref() == Ok(MIDI_DEVICE_NAME))
-        .with_context(|| format!("could not find device {}", MIDI_DEVICE_NAME))?;
-
-    let connection = midi_in
-        .connect(
-            in_port,
-            port_name,
-            move |_timestamp, bytes, ()| {
-                handler(EventWithLayer::try_from(bytes));
-            },
-            (),
-        )
-        .map_err(|e| midir::ConnectError::new(e.kind(), ()))?;
-
-    Ok(connection)
-}
 
 fn get_output_port(port_name: &str) -> Result<MidiOutputConnection> {
     let midi_out = MidiOutput::new(port_name)?;
@@ -53,10 +25,17 @@ fn get_output_port(port_name: &str) -> Result<MidiOutputConnection> {
     Ok(conn_out)
 }
 
-fn main() -> anyhow::Result<()> {
-    let _conn_in = get_input_port("input-reader", |event| {
-        println!("{:?}", event);
-    })?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let mut stream = EventStream::new()?;
+
+    tokio::spawn(async move {
+        while let Some(event_opt) = stream.next().await {
+            if let Ok(event) = event_opt {
+                println!("{:?}", event);
+            }
+        }
+    });
 
     let mut conn_out = get_output_port("output-reader")?;
 
