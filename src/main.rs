@@ -1,9 +1,10 @@
 use anyhow::Result;
-use futures::StreamExt;
-
 use autopilot::key::{Character, Code, Flag, KeyCode};
-use xtouchmini::model::{Button, ButtonPressed, State};
+use futures::StreamExt;
+use xtouchmini::model::{Button, ButtonPressed, Knob, State};
 use xtouchmini::{Controller, Event, EventStream};
+
+const INPUT_DELAY: u64 = 0;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,11 +31,11 @@ async fn main() -> Result<()> {
                     state: ButtonPressed::Down,
                 } => handle_button_press(button, &mut controller),
                 KnobChange { knob, value } => {
-                    handle_knob_change(value, layout.knob(&knob).value);
+                    handle_knob_change(&knob, &Delta::new(layout.knob(&knob).value, value));
                     layout.knob_mut(&knob).value = value;
                 }
                 FaderChange { value } => {
-                    handle_fader_change(value, layout.fader().value);
+                    handle_fader_change(&Delta::new(layout.fader().value, value));
                     layout.fader_mut().value = value;
                 }
                 _ => {}
@@ -47,16 +48,21 @@ async fn main() -> Result<()> {
 
 fn handle_button_press(button: Button, controller: &mut Controller) {
     match button {
-        Button::Button16 => {
-            autopilot::key::type_string(":_lighto::_hmm::_lighto:", &[], 0., 0.);
+        Button::Button1 => {
+            type_text(":_lighto::_hmm::_lighto:");
         }
         Button::Button7 => {
-            autopilot::key::tap(&Code(KeyCode::Tab), &[Flag::Shift, Flag::Control], 0, 0);
+            autopilot::key::tap(
+                &Code(KeyCode::Tab),
+                &[Flag::Shift, Flag::Control],
+                INPUT_DELAY,
+                0,
+            );
         }
         Button::Button8 => {
-            autopilot::key::tap(&Code(KeyCode::Tab), &[Flag::Control], 0, 0);
+            autopilot::key::tap(&Code(KeyCode::Tab), &[Flag::Control], INPUT_DELAY, 0);
         }
-        Button::Button15 => {
+        Button::Button16 => {
             // Reset
             let state = State::default();
             for command in state.to_commands() {
@@ -69,34 +75,75 @@ fn handle_button_press(button: Button, controller: &mut Controller) {
     }
 }
 
-fn handle_knob_change(value: u8, prev_value: u8) {
-    let delay: u64 = 0;
-    let string = "yo";
-    if value == prev_value && value == 0 {
-        autopilot::key::tap(&Code(KeyCode::Backspace), &[], delay, 0);
-    } else if value > prev_value {
-        for i in prev_value..value {
-            let c = string.chars().nth(i as usize).unwrap_or('o');
-            autopilot::key::tap(&Character(c), &[], delay, 0);
+fn tap_key(code: KeyCode) {
+    autopilot::key::tap(&Code(code), &[], INPUT_DELAY, 0);
+}
+
+fn tap_char(c: char) {
+    autopilot::key::tap(&Character(c), &[], INPUT_DELAY, 0);
+}
+
+fn type_text(text: &str) {
+    autopilot::key::type_string(text, &[], 0., 0.);
+}
+
+struct Delta {
+    prev: u8,
+    current: u8,
+}
+
+impl Delta {
+    fn new(prev: u8, current: u8) -> Self {
+        Self { prev, current }
+    }
+
+    fn is_increase(&self) -> bool {
+        self.current > self.prev
+    }
+
+    fn magnitude_or_1(&self) -> u8 {
+        if self.current == self.prev {
+            1
+        } else {
+            self.magnitude()
         }
-    } else {
-        for _ in 0..(prev_value - value) {
-            autopilot::key::tap(&Code(KeyCode::Backspace), &[], delay, 0);
+    }
+
+    fn magnitude(&self) -> u8 {
+        if self.current > self.prev {
+            self.current - self.prev
+        } else {
+            self.prev - self.current
         }
     }
 }
 
-fn handle_fader_change(value: u8, prev_value: u8) {
-    let delay: u64 = 0;
-    let string = "Let's go";
-    if value > prev_value {
-        for i in prev_value..value {
-            let c = string.chars().nth(i as usize).unwrap_or('o');
-            autopilot::key::tap(&Character(c), &[], delay, 0);
+fn type_string_or_backspace(string: &str, delta: &Delta) {
+    if delta.is_increase() {
+        let last = if let Some(c) = string.chars().last() {
+            c
+        } else {
+            return;
+        };
+
+        for i in delta.prev..delta.current {
+            let c = string.chars().nth(i as usize).unwrap_or(last);
+            tap_char(c);
         }
     } else {
-        for _ in 0..(prev_value - value) {
-            autopilot::key::tap(&Code(KeyCode::Backspace), &[], delay, 0);
+        for _ in 0..delta.magnitude_or_1() {
+            tap_key(KeyCode::Backspace);
         }
     }
+}
+
+fn handle_knob_change(knob: &Knob, delta: &Delta) {
+    match knob {
+        Knob::Knob1 => type_string_or_backspace("yo", delta),
+        _ => {}
+    }
+}
+
+fn handle_fader_change(delta: &Delta) {
+    type_string_or_backspace("Let's go", delta);
 }
