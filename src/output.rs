@@ -17,7 +17,6 @@ impl Controller {
 
         let worker = async move {
             while let Some(command) = rx.next().await {
-                println!("Received command: {:?}", command);
                 if let Err(e) = connection.send(&command.as_bytes()) {
                     // TODO
                     eprintln!("Failed to send: {}", e);

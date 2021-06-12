@@ -7,6 +7,20 @@ pub struct State {
 }
 
 impl State {
+    pub fn layer(&self, layer: Layer) -> &Layout {
+        match layer {
+            Layer::A => &self.layer_a,
+            Layer::B => &self.layer_b,
+        }
+    }
+
+    pub fn layer_mut(&mut self, layer: Layer) -> &mut Layout {
+        match layer {
+            Layer::A => &mut self.layer_a,
+            Layer::B => &mut self.layer_b,
+        }
+    }
+
     pub fn to_commands(&self) -> Vec<Command> {
         let mut out = vec![Command::SetLayer { layer: Layer::B }];
         out.append(&mut self.layer_b.to_commands());
@@ -42,6 +56,10 @@ impl Layout {
 
     pub fn fader(&self) -> &FaderState {
         &self.fader
+    }
+
+    pub fn fader_mut(&mut self) -> &mut FaderState {
+        &mut self.fader
     }
 
     pub fn to_commands(&self) -> Vec<Command> {
@@ -97,14 +115,14 @@ impl Default for ButtonPressed {
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
 pub struct FaderState {
-    value: u8,
+    pub value: u8,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct KnobState {
-    value: u8,
-    lighting: RingLighting,
-    behavior: RingLedBehavior,
+    pub value: u8,
+    pub lighting: RingLighting,
+    pub behavior: RingLedBehavior,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
