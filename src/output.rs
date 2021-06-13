@@ -19,12 +19,15 @@ impl Controller {
             while let Some(command) = rx.next().await {
                 if let Err(e) = connection.send(&command.as_bytes()) {
                     // TODO
-                    eprintln!("Failed to send: {}", e);
+                    eprintln!("Failed to send command to controller: {}", e);
                 }
             }
         };
 
-        let controller = Self { sender: tx };
+        let mut controller = Self { sender: tx };
+        controller.send(Command::SetOperationMode {
+            mode: OperationMode::MackieControl,
+        })?;
 
         Ok((controller, worker))
     }
@@ -61,6 +64,15 @@ pub enum Command {
         knob: Knob,
         state: KnobState,
     },
+    SetOperationMode {
+        mode: OperationMode,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OperationMode {
+    Standard,
+    MackieControl,
 }
 
 impl Command {
@@ -80,6 +92,13 @@ impl Command {
                 };
 
                 [0xb0, 0x2f + knob.to_midi(), midi_value]
+            }
+            SetOperationMode { mode } => {
+                let data = match mode {
+                    OperationMode::Standard => 0,
+                    OperationMode::MackieControl => 1,
+                };
+                [0xb0, 0x7f, data]
             }
         }
     }
