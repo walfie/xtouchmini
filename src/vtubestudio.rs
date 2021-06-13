@@ -1,6 +1,57 @@
+use anyhow::Result;
+use futures::SinkExt;
 use serde::Serialize;
 use serde_repr::Serialize_repr;
+use std::net::SocketAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::net::TcpStream;
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
+
+#[derive(Debug)]
+pub struct Client {
+    addr: SocketAddr,
+    tcp: Option<Framed<TcpStream, LengthDelimitedCodec>>,
+}
+
+impl Client {
+    pub fn new(addr: SocketAddr) -> Self {
+        Self { addr, tcp: None }
+    }
+
+    pub async fn connect(&mut self) -> Result<()> {
+        self.tcp = Some(self.connect_inner().await?);
+        Ok(())
+    }
+
+    pub async fn toggle_hotkey(&mut self, hotkey: i32) -> Result<()> {
+        self.send_message(&Message::new_with_hotkey(hotkey)).await
+    }
+
+    pub async fn set_param(&mut self, param: Param, value: f64) -> Result<()> {
+        self.send_message(&Message::new_with_param(param, value))
+            .await
+    }
+
+    async fn connect_inner(&self) -> Result<Framed<TcpStream, LengthDelimitedCodec>> {
+        Ok(Framed::new(
+            TcpStream::connect(&self.addr).await?,
+            LengthDelimitedCodec::new(),
+        ))
+    }
+
+    async fn send_message(&mut self, msg: &Message) -> Result<()> {
+        let mut tcp = if let Some(tcp) = self.tcp.take() {
+            tcp
+        } else {
+            self.connect_inner().await?
+        };
+
+        let json = serde_json::to_vec(&msg)?;
+        tcp.send(json.into()).await?;
+        self.tcp = Some(tcp);
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "PascalCase")]

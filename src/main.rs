@@ -17,10 +17,12 @@ async fn main() -> Result<()> {
     tokio::spawn(worker);
     let mut stream = EventStream::new()?;
 
-    let mut tcp = Framed::new(
-        TcpStream::connect("127.0.0.1:25565").await?,
-        LengthDelimitedCodec::new(),
-    );
+    let vtube_addr = "127.0.0.1:25565".parse()?;
+    let mut vtube = vtubestudio::Client::new(vtube_addr);
+
+    if vtube.connect().await.is_ok() {
+        controller.set_button(Button::Button16, ButtonLedState::On)?;
+    }
 
     while let Some(event_opt) = stream.next().await {
         if let Ok(event) = event_opt {
@@ -37,11 +39,14 @@ async fn main() -> Result<()> {
 
                     if is_down {
                         let hotkey: usize = button.into();
+                        let hotkey = hotkey as i32 + 1;
 
-                        let msg = vtubestudio::Message::new_with_hotkey(hotkey as i32 + 1);
-
-                        let out = serde_json::to_vec(&msg)?;
-                        tcp.send(out.into()).await?;
+                        if let Err(e) = vtube.toggle_hotkey(hotkey).await {
+                            eprintln!("{}", e); // TODO: Logger
+                            controller.set_button(Button::Button16, ButtonLedState::Off)?;
+                        } else {
+                            controller.set_button(Button::Button16, ButtonLedState::On)?;
+                        }
                     }
                 }
                 _ => {}

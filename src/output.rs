@@ -35,6 +35,10 @@ impl Controller {
     pub fn send(&mut self, command: Command) -> Result<()> {
         Ok(self.sender.unbounded_send(command)?)
     }
+
+    pub fn set_button(&mut self, button: Button, state: ButtonLedState) -> Result<()> {
+        self.send(Command::SetButtonLedState { button, state })
+    }
 }
 
 fn get_output_port(port_name: &str) -> Result<MidiOutputConnection> {
