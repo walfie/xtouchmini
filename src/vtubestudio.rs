@@ -2,11 +2,14 @@ use anyhow::{Context, Result};
 use futures::SinkExt;
 use serde::Serialize;
 use serde_repr::Serialize_repr;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+
+type DataVec<T> = SmallVec<[T; 16]>;
 
 #[derive(Debug)]
 pub struct Client {
@@ -59,7 +62,7 @@ impl Client {
                 param: *param,
                 value: *value,
             })
-            .collect::<Vec<_>>();
+            .collect::<DataVec<_>>();
 
         self.send_message(&msg).await
     }
@@ -107,7 +110,7 @@ pub struct Message {
     #[serde(rename = "found")] // This one is lowercase for some reason
     pub found: bool,
     pub hotkey: i32,
-    pub data: Vec<MessageData>,
+    pub data: DataVec<MessageData>,
 }
 
 impl Message {
@@ -124,7 +127,7 @@ impl Message {
             command: 0,
             found: true,
             hotkey: -1,
-            data: Vec::new(),
+            data: DataVec::new(),
         }
     }
 
