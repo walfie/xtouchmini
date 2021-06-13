@@ -76,10 +76,11 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
     match (knob, action) {
         // Raise arms
         (knob, Turned { delta }) if matches!(knob, Knob::Knob1 | Knob::Knob2) => {
+            let multiplier = context.controller.state().fader().as_percent() * 0.1 + 0.01;
             let (param, multiplier) = if let Knob::Knob1 = knob {
-                (Param::CheekPuff, 0.01)
+                (Param::CheekPuff, multiplier)
             } else {
-                (Param::FaceAngry, -0.01)
+                (Param::FaceAngry, -multiplier)
             };
 
             let value = (context.vtube.param(param) + (delta as f64 * multiplier))
@@ -102,7 +103,7 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
         // Spin
         (Knob::Knob8, action) => {
             let param = Param::VoiceFrequency;
-            let multiplier = 1.0;
+            let multiplier = context.controller.state().fader().as_percent() * 10.0 + 1.0;
             let max = 360.0;
 
             let value = match action {
@@ -186,6 +187,8 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
         }
         _ => {}
     }
+
+    context.vtube.refresh_params().await?;
 
     Ok(())
 }
