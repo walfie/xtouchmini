@@ -24,6 +24,10 @@ impl Client {
         }
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.tcp.is_some()
+    }
+
     pub async fn connect(&mut self) -> Result<()> {
         self.tcp = Some(self.connect_inner().await?);
         Ok(())

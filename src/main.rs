@@ -1,5 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
+use xtouchmini::vtubestudio::Param;
 use xtouchmini::*;
 
 struct Context {
@@ -31,18 +32,34 @@ async fn main() -> Result<()> {
 
     while let Some(event_opt) = stream.next().await {
         if let Ok(event) = event_opt {
+            let is_connected = context.vtube.is_connected();
+
             println!("{:?}", event); // TODO: Debug log
 
             let result = match event {
-                Event::KnobTurned { knob, delta } => handle_knob(&mut context, knob, delta).await,
+                Event::KnobTurned { knob, delta } => {
+                    handle_knob(&mut context, knob, KnobAction::Turned { delta }).await
+                }
+                Event::KnobPressed { knob, is_down } => {
+                    handle_knob(&mut context, knob, KnobAction::Pressed { is_down }).await
+                }
                 Event::ButtonPressed { button, is_down } => {
                     handle_button(&mut context, button, is_down).await
                 }
                 _ => Ok(()),
             };
 
+            // On error, disable the last button to indicate that VTubeStudio failed
+            // TODO: Add specific error variant
             if let Err(e) = result {
-                eprintln!("{}", e);
+                eprintln!("{}", e); // TODO: Logger
+                context
+                    .controller
+                    .set_button(Button::Button16, ButtonLedState::Off)?;
+            } else if !is_connected {
+                context
+                    .controller
+                    .set_button(Button::Button16, ButtonLedState::On)?;
             }
         }
     }
@@ -50,12 +67,18 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn handle_knob(context: &mut Context, knob: Knob, delta: i8) -> Result<()> {
-    use vtubestudio::Param;
+#[derive(Clone, Debug)]
+pub enum KnobAction {
+    Turned { delta: i8 },
+    Pressed { is_down: bool },
+}
 
-    match knob {
+async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> Result<()> {
+    use KnobAction::*;
+
+    match (knob, action) {
         // Raise arms
-        Knob::Knob1 | Knob::Knob2 => {
+        (knob, Turned { delta }) if matches!(knob, Knob::Knob1 | Knob::Knob2) => {
             let (param, multiplier) = if let Knob::Knob1 = knob {
                 (Param::CheekPuff, 0.01)
             } else {
@@ -79,6 +102,36 @@ async fn handle_knob(context: &mut Context, knob: Knob, delta: i8) -> Result<()>
                 KnobValue::from_percent_nonzero(knob_value),
             )?;
         }
+        // Spin
+        (Knob::Knob8, action) => {
+            let param = Param::VoiceFrequency;
+            let multiplier = 1.0;
+            let max = 360.0;
+
+            let value = match action {
+                Turned { delta } => {
+                    let value = context.vtube.param(param) + (delta as f64 * multiplier);
+
+                    if value < 0.0 {
+                        max - value
+                    } else if value >= max {
+                        value - max
+                    } else {
+                        value
+                    }
+                }
+                Pressed { is_down: true } => 0.0,
+                _ => return Ok(()),
+            };
+
+            context.vtube.set_param(param, value).await?;
+
+            context.controller.set_knob(
+                knob,
+                KnobLedStyle::Single,
+                KnobValue::from_percent_nonzero(value / max),
+            )?;
+        }
         _ => {}
     }
 
@@ -86,30 +139,53 @@ async fn handle_knob(context: &mut Context, knob: Knob, delta: i8) -> Result<()>
 }
 
 async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> Result<()> {
-    let state = if is_down {
-        ButtonLedState::On
-    } else {
-        ButtonLedState::Off
-    };
+    if !is_down {
+        return Ok(());
+    }
 
-    context
-        .controller
-        .send(Command::SetButtonLedState { button, state })?;
+    async fn set_expression(context: &mut Context, button: Button, value: f64) -> Result<()> {
+        use Button::*;
 
-    if is_down {
-        let hotkey: usize = button.into();
-        let hotkey = hotkey as i32 + 1;
-
-        if let Err(e) = context.vtube.toggle_hotkey(hotkey).await {
-            eprintln!("{}", e); // TODO: Logger
-            context
-                .controller
-                .set_button(Button::Button16, ButtonLedState::Off)?;
+        let new_value = if context.vtube.param(Param::MouthX) == value {
+            0.0
         } else {
-            context
-                .controller
-                .set_button(Button::Button16, ButtonLedState::On)?;
+            value
+        };
+
+        context.vtube.set_param(Param::MouthX, new_value).await?;
+        for b in &[Button1, Button2, Button3, Button4, Button5, Button6] {
+            let state = if *b == button && new_value != 0.0 {
+                ButtonLedState::On
+            } else {
+                ButtonLedState::Off
+            };
+
+            context.controller.set_button(*b, state)?;
         }
+
+        Ok(())
+    }
+
+    match button {
+        Button::Button1 => set_expression(context, button, 1.0).await?,
+        Button::Button2 => set_expression(context, button, 2.0).await?,
+        Button::Button3 => set_expression(context, button, 3.0).await?,
+        Button::Button4 => set_expression(context, button, 4.0).await?,
+        Button::Button5 => set_expression(context, button, 5.0).await?,
+        Button::Button6 => set_expression(context, button, 6.0).await?,
+        Button::Button9 => {
+            let was_frowning = context.vtube.param(Param::TongueOut) == 1.0;
+
+            let (value, state) = if was_frowning {
+                (0.0, ButtonLedState::Off)
+            } else {
+                (1.0, ButtonLedState::On)
+            };
+
+            context.vtube.set_param(Param::TongueOut, value).await?;
+            context.controller.set_button(button, state)?;
+        }
+        _ => {}
     }
 
     Ok(())
