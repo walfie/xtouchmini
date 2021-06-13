@@ -38,7 +38,7 @@ pub enum Button {
 pub enum Knob {
     // These u8 values are for knob turn messages.
     // For knob press, add 0x10 to the value.
-    Knob1 = 0x10,
+    Knob1 = 0x01,
     Knob2,
     Knob3,
     Knob4,
@@ -48,8 +48,57 @@ pub enum Knob {
     Knob8,
 }
 
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive)]
+pub enum ButtonLedState {
+    Off = 0x00,
+    On = 0x7f,
+    Blink = 0x01,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct FaderValue(u8);
+pub struct KnobValue(pub(crate) u8);
+
+impl KnobValue {
+    pub const MIN: KnobValue = KnobValue(0);
+
+    // There are 12 LEDs, but the max knob value in MC mode is actually 11
+    pub const MAX: KnobValue = KnobValue(12);
+
+    pub fn new(value: u8) -> Self {
+        Self(value.min(Self::MAX.0))
+    }
+
+    pub fn from_percent(value: f64) -> Self {
+        Self::new(((Self::MAX.0 as f64) * value) as u8)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum KnobLedStyle {
+    /// One LED is lit
+    Single,
+    /// Doesn't work in MC mode
+    Pan,
+    /// Light all LEDs from the top until the current value, on both sides
+    Fan,
+    /// Same as Single in MC mode
+    Spread,
+    /// Light all LEDs from the top until the current value, on one side
+    Trim,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct FaderValue(pub u8);
+
+impl FaderValue {
+    pub const MIN: FaderValue = FaderValue(0);
+    pub const MAX: FaderValue = FaderValue(127);
+
+    pub fn as_percent(&self) -> f64 {
+        self.0 as f64 / Self::MAX.0 as f64
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event {
@@ -74,7 +123,7 @@ impl TryFrom<&[u8]> for Event {
                 };
 
                 Ok(KnobTurned {
-                    knob: Knob::try_from(channel)?,
+                    knob: Knob::try_from(channel - 0x0f)?,
                     delta,
                 })
             }
@@ -86,7 +135,7 @@ impl TryFrom<&[u8]> for Event {
 
                 if channel >= 0x20 && channel <= 0x27 {
                     Ok(Event::KnobPressed {
-                        knob: Knob::try_from(channel - 0x10)?,
+                        knob: Knob::try_from(channel - 0x1f)?,
                         is_down,
                     })
                 } else {
