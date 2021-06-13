@@ -18,6 +18,18 @@ async fn main() -> Result<()> {
     while let Some(event_opt) = stream.next().await {
         if let Ok(event) = event_opt {
             println!("{:?}", event);
+            match event {
+                Event::ButtonPressed { button, is_down } => {
+                    let state = if is_down {
+                        ButtonLedState::On
+                    } else {
+                        ButtonLedState::Off
+                    };
+
+                    controller.send(Command::SetButtonLedState { button, state })?;
+                }
+                _ => {}
+            }
         }
     }
 
