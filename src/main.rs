@@ -1,8 +1,11 @@
 use anyhow::Result;
-use futures::{SinkExt, StreamExt};
-use tokio::net::TcpStream;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use futures::StreamExt;
 use xtouchmini::*;
+
+struct Context {
+    controller: Controller,
+    vtube: vtubestudio::Client,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,33 +27,75 @@ async fn main() -> Result<()> {
         controller.set_button(Button::Button16, ButtonLedState::On)?;
     }
 
+    let mut context = Context { controller, vtube };
+
     while let Some(event_opt) = stream.next().await {
         if let Ok(event) = event_opt {
-            println!("{:?}", event);
-            match event {
+            println!("{:?}", event); // TODO: Debug log
+
+            let result = match event {
+                Event::KnobTurned { knob, delta } => handle_knob(&mut context, knob, delta).await,
                 Event::ButtonPressed { button, is_down } => {
-                    let state = if is_down {
-                        ButtonLedState::On
-                    } else {
-                        ButtonLedState::Off
-                    };
-
-                    controller.send(Command::SetButtonLedState { button, state })?;
-
-                    if is_down {
-                        let hotkey: usize = button.into();
-                        let hotkey = hotkey as i32 + 1;
-
-                        if let Err(e) = vtube.toggle_hotkey(hotkey).await {
-                            eprintln!("{}", e); // TODO: Logger
-                            controller.set_button(Button::Button16, ButtonLedState::Off)?;
-                        } else {
-                            controller.set_button(Button::Button16, ButtonLedState::On)?;
-                        }
-                    }
+                    handle_button(&mut context, button, is_down).await
                 }
-                _ => {}
+                _ => Ok(()),
+            };
+
+            if let Err(e) = result {
+                eprintln!("{}", e);
             }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_knob(context: &mut Context, knob: Knob, delta: i8) -> Result<()> {
+    use vtubestudio::Param;
+
+    match knob {
+        Knob::Knob1 | Knob::Knob2 => {
+            let (param, multiplier) = if let Knob::Knob1 = knob {
+                (Param::CheekPuff, 0.01)
+            } else {
+                (Param::FaceAngry, -0.01)
+            };
+
+            let value = (context.vtube.param(param) + (delta as f64 * multiplier))
+                .max(0.0)
+                .min(1.0);
+            context.vtube.set_param(param, value).await?;
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> Result<()> {
+    let state = if is_down {
+        ButtonLedState::On
+    } else {
+        ButtonLedState::Off
+    };
+
+    context
+        .controller
+        .send(Command::SetButtonLedState { button, state })?;
+
+    if is_down {
+        let hotkey: usize = button.into();
+        let hotkey = hotkey as i32 + 1;
+
+        if let Err(e) = context.vtube.toggle_hotkey(hotkey).await {
+            eprintln!("{}", e); // TODO: Logger
+            context
+                .controller
+                .set_button(Button::Button16, ButtonLedState::Off)?;
+        } else {
+            context
+                .controller
+                .set_button(Button::Button16, ButtonLedState::On)?;
         }
     }
 

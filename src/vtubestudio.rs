@@ -1,7 +1,8 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::SinkExt;
 use serde::Serialize;
 use serde_repr::Serialize_repr;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
@@ -11,11 +12,16 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 pub struct Client {
     addr: SocketAddr,
     tcp: Option<Framed<TcpStream, LengthDelimitedCodec>>,
+    params: HashMap<Param, f64>,
 }
 
 impl Client {
     pub fn new(addr: SocketAddr) -> Self {
-        Self { addr, tcp: None }
+        Self {
+            addr,
+            params: HashMap::new(),
+            tcp: None,
+        }
     }
 
     pub async fn connect(&mut self) -> Result<()> {
@@ -28,13 +34,30 @@ impl Client {
     }
 
     pub async fn set_param(&mut self, param: Param, value: f64) -> Result<()> {
-        self.send_message(&Message::new_with_param(param, value))
-            .await
+        let result = self
+            .send_message(&Message::new_with_param(param, value))
+            .await;
+
+        if result.is_ok() {
+            self.params.insert(param, value);
+        }
+
+        result
+    }
+
+    pub fn param(&self, param: Param) -> f64 {
+        if let Some(value) = self.params.get(&param) {
+            *value
+        } else {
+            0.0
+        }
     }
 
     async fn connect_inner(&self) -> Result<Framed<TcpStream, LengthDelimitedCodec>> {
         Ok(Framed::new(
-            TcpStream::connect(&self.addr).await?,
+            TcpStream::connect(&self.addr)
+                .await
+                .context("failed to connect to VTubeStudio")?,
             LengthDelimitedCodec::new(),
         ))
     }
@@ -47,7 +70,9 @@ impl Client {
         };
 
         let json = serde_json::to_vec(&msg)?;
-        tcp.send(json.into()).await?;
+        tcp.send(json.into())
+            .await
+            .context("failed to send message to VTubeStudio")?;
         self.tcp = Some(tcp);
         Ok(())
     }
@@ -78,7 +103,7 @@ impl Message {
             time,
             r#type: 1,
             command: 0,
-            found: false,
+            found: true,
             hotkey: -1,
             data: Vec::new(),
         }
@@ -105,14 +130,8 @@ pub struct MessageData {
     pub value: f64,
 }
 
-impl MessageData {
-    fn new(param: Param, value: f64) -> Self {
-        Self { param, value }
-    }
-}
-
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize_repr)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize_repr)]
 pub enum Param {
     FacePositionX = 1,
     FacePositionY,
