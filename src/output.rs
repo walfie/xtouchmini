@@ -59,8 +59,7 @@ pub enum Command {
     },
     SetKnobLedState {
         knob: Knob,
-        style: KnobLedStyle,
-        value: KnobValue,
+        state: KnobState,
     },
 }
 
@@ -69,14 +68,15 @@ impl Command {
         use Command::*;
         match self {
             SetButtonLedState { button, state } => [0x90, (*button).into(), (*state).into()],
-            SetKnobLedState { knob, style, value } => {
+            SetKnobLedState { knob, state } => {
                 use KnobLedStyle::*;
-                let midi_value = match style {
-                    Single => value.0,
-                    Trim => value.0 + 0x10,
-                    Fan => value.0 + 0x20,
-                    Spread => value.0 + 0x40,
-                    Pan => value.0 + 0x50,
+                let value = state.value.0;
+                let midi_value = match state.style {
+                    Single => value,
+                    Trim => value + 0x10,
+                    Fan => value + 0x20,
+                    Spread => value + 0x40,
+                    Pan => value + 0x50, // This doesn't actually do anything in MC mode
                 };
 
                 let knob_u8: u8 = (*knob).into();

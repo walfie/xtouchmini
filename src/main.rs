@@ -13,8 +13,10 @@ async fn main() -> Result<()> {
 
     controller.send(Command::SetKnobLedState {
         knob: Knob::Knob5,
-        style: KnobLedStyle::Spread,
-        value: KnobValue::from_percent(0.6),
+        state: KnobState {
+            style: KnobLedStyle::Spread,
+            value: KnobValue::from_percent(0.6),
+        },
     })?;
 
     tokio::spawn(worker);

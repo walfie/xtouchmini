@@ -5,6 +5,19 @@ use anyhow::{bail, Result};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryFrom;
 
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct ControllerState {
+    knobs: [KnobState; 8],
+    buttons: [ButtonLedState; 18],
+    fader: FaderValue,
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct KnobState {
+    pub style: KnobLedStyle,
+    pub value: KnobValue,
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
 pub enum Button {
@@ -56,7 +69,13 @@ pub enum ButtonLedState {
     Blink = 0x01,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+impl Default for ButtonLedState {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct KnobValue(pub(crate) u8);
 
 impl KnobValue {
@@ -88,7 +107,13 @@ pub enum KnobLedStyle {
     Trim,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+impl Default for KnobLedStyle {
+    fn default() -> Self {
+        Self::Single
+    }
+}
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FaderValue(pub u8);
 
 impl FaderValue {
@@ -100,7 +125,7 @@ impl FaderValue {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
     ButtonPressed { button: Button, is_down: bool },
     KnobPressed { knob: Knob, is_down: bool },
