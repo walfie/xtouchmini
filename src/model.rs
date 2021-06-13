@@ -15,24 +15,47 @@ pub struct ControllerState {
 }
 
 impl ControllerState {
-    pub fn to_commands(&self) -> Vec<Command> {
-        let mut out = Vec::new();
+    pub fn knob(&self, knob: Knob) -> &KnobState {
+        &self.knobs[knob.to_index()]
+    }
 
-        for (i, knob) in Knob::iter().enumerate() {
-            out.push(Command::SetKnobLedState {
+    pub fn knob_mut(&mut self, knob: Knob) -> &mut KnobState {
+        &mut self.knobs[knob.to_index()]
+    }
+
+    pub fn button(&self, button: Button) -> &ButtonLedState {
+        &self.buttons[button.to_index()]
+    }
+
+    pub fn button_mut(&mut self, button: Button) -> &mut ButtonLedState {
+        &mut self.buttons[button.to_index()]
+    }
+
+    pub fn fader(&self) -> &FaderValue {
+        &self.fader
+    }
+
+    pub fn fader_mut(&mut self) -> &mut FaderValue {
+        &mut self.fader
+    }
+
+    pub fn to_commands<'a>(&'a self) -> impl Iterator<Item = Command> + 'a {
+        let knobs = Knob::iter()
+            .enumerate()
+            .map(move |(i, knob)| Command::SetKnobLedState {
                 knob,
                 state: self.knobs[i].clone(),
             });
-        }
 
-        for (i, button) in Button::iter().enumerate() {
-            out.push(Command::SetButtonLedState {
-                button,
-                state: self.buttons[i].clone(),
-            });
-        }
+        let buttons =
+            Button::iter()
+                .enumerate()
+                .map(move |(i, button)| Command::SetButtonLedState {
+                    button,
+                    state: self.buttons[i].clone(),
+                });
 
-        out
+        knobs.chain(buttons)
     }
 }
 
@@ -55,6 +78,14 @@ macro_rules! impl_midi {
                 $($value => Self::$variant,)*
                 _ => return None,
             })
+        }
+
+        pub fn to_index(&self) -> usize {
+            (*self).into()
+        }
+
+        pub fn from_index(index: usize) -> Option<Self> {
+            Self::iter().find(|item| item.to_index() == index)
         }
     )
 }
@@ -138,8 +169,8 @@ impl Knob {
     }
 }
 
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(usize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, EnumIter)]
 pub enum ButtonLedState {
     Off,
     On,

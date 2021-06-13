@@ -12,12 +12,6 @@ struct Context {
 async fn main() -> Result<()> {
     let (mut controller, worker) = Controller::new()?;
 
-    // Reset controller state
-    let state = ControllerState::default();
-    for command in state.to_commands() {
-        controller.send(command)?;
-    }
-
     tokio::spawn(worker);
     let mut stream = EventStream::new()?;
 
@@ -46,7 +40,10 @@ async fn main() -> Result<()> {
                 Event::ButtonPressed { button, is_down } => {
                     handle_button(&mut context, button, is_down).await
                 }
-                _ => Ok(()),
+                Event::FaderMoved { value } => {
+                    context.controller.set_fader(value);
+                    Ok(())
+                }
             };
 
             // On error, disable the last button to indicate that VTubeStudio failed

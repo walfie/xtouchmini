@@ -6,8 +6,10 @@ use futures::StreamExt;
 use midir::{MidiOutput, MidiOutputConnection};
 use std::future::Future;
 
+#[derive(Clone, Debug)]
 pub struct Controller {
     sender: mpsc::UnboundedSender<Command>,
+    state: ControllerState,
 }
 
 impl Controller {
@@ -24,7 +26,14 @@ impl Controller {
             }
         };
 
-        let mut controller = Self { sender: tx };
+        // Reset controller state
+        let state = ControllerState::default();
+        for command in state.to_commands() {
+            tx.unbounded_send(command)?;
+        }
+
+        let mut controller = Self { sender: tx, state };
+
         controller.send(Command::SetOperationMode {
             mode: OperationMode::MackieControl,
         })?;
@@ -32,19 +41,32 @@ impl Controller {
         Ok((controller, worker))
     }
 
-    pub fn send(&mut self, command: Command) -> Result<()> {
+    fn send(&mut self, command: Command) -> Result<()> {
         Ok(self.sender.unbounded_send(command)?)
     }
 
     pub fn set_button(&mut self, button: Button, state: ButtonLedState) -> Result<()> {
+        *self.state.button_mut(button) = state;
         self.send(Command::SetButtonLedState { button, state })
     }
 
     pub fn set_knob(&mut self, knob: Knob, style: KnobLedStyle, value: KnobValue) -> Result<()> {
-        self.send(Command::SetKnobLedState {
-            knob,
-            state: KnobState { style, value },
-        })
+        let state = {
+            let state = self.state.knob_mut(knob);
+            state.style = style;
+            state.value = value;
+            state.clone()
+        };
+
+        self.send(Command::SetKnobLedState { knob, state })
+    }
+
+    pub fn set_fader(&mut self, value: FaderValue) {
+        self.state.fader_mut().0 = value.0;
+    }
+
+    pub fn state(&self) -> &ControllerState {
+        &self.state
     }
 }
 
