@@ -135,6 +135,8 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
         _ => {}
     }
 
+    context.vtube.refresh_params().await?;
+
     Ok(())
 }
 

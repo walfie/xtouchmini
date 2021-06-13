@@ -49,6 +49,21 @@ impl Client {
         result
     }
 
+    pub async fn refresh_params(&mut self) -> Result<()> {
+        let mut msg = Message::new();
+
+        msg.data = self
+            .params
+            .iter()
+            .map(|(param, value)| MessageData {
+                param: *param,
+                value: *value,
+            })
+            .collect::<Vec<_>>();
+
+        self.send_message(&msg).await
+    }
+
     pub fn param(&self, param: Param) -> f64 {
         if let Some(value) = self.params.get(&param) {
             *value
