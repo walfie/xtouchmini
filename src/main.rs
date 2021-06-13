@@ -6,18 +6,11 @@ use xtouchmini::*;
 async fn main() -> Result<()> {
     let (mut controller, worker) = Controller::new()?;
 
-    controller.send(Command::SetButtonLedState {
-        button: Button::Button1,
-        state: ButtonLedState::On,
-    })?;
-
-    controller.send(Command::SetKnobLedState {
-        knob: Knob::Knob5,
-        state: KnobState {
-            style: KnobLedStyle::Spread,
-            value: KnobValue::from_percent(0.6),
-        },
-    })?;
+    // Reset controller state
+    let state = ControllerState::default();
+    for command in state.to_commands() {
+        controller.send(command)?;
+    }
 
     tokio::spawn(worker);
     let mut stream = EventStream::new()?;

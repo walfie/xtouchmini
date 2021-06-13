@@ -15,4 +15,5 @@ obws = { git = "https://github.com/dnaka91/obws.git", rev = "b6e5835a643d9afa642
 osascript = "0.3.0"
 pin-project-lite = "0.2.6"
 structopt = "0.3.21"
+strum = { version = "0.21", features = ["derive"] }
 tokio = { version = "1.6.1", features = ["full"] }

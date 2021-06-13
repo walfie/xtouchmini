@@ -1,15 +1,39 @@
 // Heavily based on the Mackie Control values from Jon Skeet's project:
 // https://github.com/jskeet/DemoCode/blob/c73e36e45bd01e1327b529b3b7de300ed7f01601/XTouchMini/XTouchMini.Model/XTouchMiniMackieController.cs#L115
 
+use crate::output::Command;
 use anyhow::{bail, Context, Result};
 use num_enum::IntoPrimitive;
 use std::convert::TryFrom;
+use strum::{EnumIter, IntoEnumIterator};
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct ControllerState {
     knobs: [KnobState; 8],
     buttons: [ButtonLedState; 18],
     fader: FaderValue,
+}
+
+impl ControllerState {
+    pub fn to_commands(&self) -> Vec<Command> {
+        let mut out = Vec::new();
+
+        for (i, knob) in Knob::iter().enumerate() {
+            out.push(Command::SetKnobLedState {
+                knob,
+                state: self.knobs[i].clone(),
+            });
+        }
+
+        for (i, button) in Button::iter().enumerate() {
+            out.push(Command::SetButtonLedState {
+                button,
+                state: self.buttons[i].clone(),
+            });
+        }
+
+        out
+    }
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -36,7 +60,7 @@ macro_rules! impl_midi {
 }
 
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, EnumIter)]
 pub enum Button {
     // Top row
     Button1,
@@ -87,7 +111,7 @@ impl Button {
 }
 
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, EnumIter)]
 pub enum Knob {
     // These u8 values are for knob turn messages.
     // For knob press, add 0x10 to the value.
