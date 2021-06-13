@@ -1,120 +1,35 @@
+// Heavily based on the Mackie Control values from Jon Skeet's project:
+// https://github.com/jskeet/DemoCode/blob/c73e36e45bd01e1327b529b3b7de300ed7f01601/XTouchMini/XTouchMini.Model/XTouchMiniMackieController.cs#L115
+
 use crate::output::Command;
+use anyhow::{bail, Context, Result};
+use num_enum::IntoPrimitive;
+use std::convert::TryFrom;
+use strum::{EnumIter, IntoEnumIterator};
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
-pub struct CcValue(pub u8);
-
-impl CcValue {
-    pub fn percentage(&self) -> f64 {
-        self.0 as f64 / Self::MAX.0 as f64
-    }
-
-    pub fn is_max(&self) -> bool {
-        self.0 >= Self::MAX.0
-    }
-
-    pub fn is_min(&self) -> bool {
-        self.0 <= Self::MIN.0
-    }
-
-    pub const MIN: Self = Self(0);
-    pub const MAX: Self = Self(127);
-}
-
-impl From<u8> for CcValue {
-    fn from(value: u8) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
-pub struct State {
-    layer_a: Layout,
-    layer_b: Layout,
-}
-
-impl State {
-    pub fn layer(&self, layer: Layer) -> &Layout {
-        match layer {
-            Layer::A => &self.layer_a,
-            Layer::B => &self.layer_b,
-        }
-    }
-
-    pub fn layer_mut(&mut self, layer: Layer) -> &mut Layout {
-        match layer {
-            Layer::A => &mut self.layer_a,
-            Layer::B => &mut self.layer_b,
-        }
-    }
-
-    pub fn to_commands(&self) -> Vec<Command> {
-        let mut out = vec![Command::SetLayer { layer: Layer::B }];
-        out.append(&mut self.layer_b.to_commands());
-        out.push(Command::SetLayer { layer: Layer::A });
-        out.append(&mut self.layer_a.to_commands());
-        out
-    }
-}
-
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
-pub struct Layout {
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct ControllerState {
     knobs: [KnobState; 8],
-    buttons: [ButtonState; 16],
-    fader: FaderState,
+    buttons: [ButtonLedState; 18],
+    fader: FaderValue,
 }
 
-impl Layout {
-    pub fn knob(&mut self, knob: &Knob) -> &KnobState {
-        &self.knobs[knob.to_index() as usize - 1]
-    }
-
-    pub fn knob_mut(&mut self, knob: &Knob) -> &mut KnobState {
-        &mut self.knobs[knob.to_index() as usize - 1]
-    }
-
-    pub fn button(&mut self, button: &Button) -> &ButtonState {
-        &self.buttons[button.to_index() as usize - 1]
-    }
-
-    pub fn button_mut(&mut self, button: &Button) -> &mut ButtonState {
-        &mut self.buttons[button.to_index() as usize - 1]
-    }
-
-    pub fn fader(&self) -> &FaderState {
-        &self.fader
-    }
-
-    pub fn fader_mut(&mut self) -> &mut FaderState {
-        &mut self.fader
-    }
-
+impl ControllerState {
     pub fn to_commands(&self) -> Vec<Command> {
         let mut out = Vec::new();
 
-        for (index, state) in self.knobs.iter().enumerate() {
-            if let Some(knob) = Knob::from_index(index as u8 + 1) {
-                out.push(Command::SetKnobValue {
-                    knob,
-                    value: state.value,
-                });
-                out.push(Command::SetRingLighting {
-                    knob,
-                    lighting: state.lighting,
-                });
-                out.push(Command::SetRingLedBehavior {
-                    knob,
-                    behavior: state.behavior,
-                });
-            }
+        for (i, knob) in Knob::iter().enumerate() {
+            out.push(Command::SetKnobLedState {
+                knob,
+                state: self.knobs[i].clone(),
+            });
         }
 
-        for (index, state) in self.buttons.iter().enumerate() {
-            if let Some(button) = Button::from_index(index as u8 + 1) {
-                out.push(Command::SetButtonLight {
-                    button,
-                    state: state.light,
-                });
-            }
+        for (i, button) in Button::iter().enumerate() {
+            out.push(Command::SetButtonLedState {
+                button,
+                state: self.buttons[i].clone(),
+            });
         }
 
         out
@@ -122,49 +37,32 @@ impl Layout {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ButtonState {
-    pressed: ButtonPressed,
-    light: ButtonLight,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ButtonPressed {
-    Up,
-    Down,
-}
-
-impl Default for ButtonPressed {
-    fn default() -> Self {
-        Self::Up
-    }
-}
-
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
-pub struct FaderState {
-    pub value: CcValue,
-}
-
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct KnobState {
-    pub value: CcValue,
-    pub lighting: RingLighting,
-    pub behavior: RingLedBehavior,
+    pub style: KnobLedStyle,
+    pub value: KnobValue,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Layer {
-    A,
-    B,
+macro_rules! impl_midi {
+    ($($variant:ident => $value:expr),+ $(,)?) => (
+        pub fn to_midi(&self) -> u8 {
+            match self {
+                $(Self::$variant => $value,)*
+            }
+        }
+
+        pub fn from_midi(value: u8) -> Option<Self> {
+            Some(match value {
+                $($value => Self::$variant,)*
+                _ => return None,
+            })
+        }
+    )
 }
 
-impl Default for Layer {
-    fn default() -> Self {
-        Self::A
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(usize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, EnumIter)]
 pub enum Button {
+    // Top row
     Button1,
     Button2,
     Button3,
@@ -173,6 +71,8 @@ pub enum Button {
     Button6,
     Button7,
     Button8,
+
+    // Bottom row
     Button9,
     Button10,
     Button11,
@@ -181,57 +81,40 @@ pub enum Button {
     Button14,
     Button15,
     Button16,
+
+    // Layer buttons
+    LayerA,
+    LayerB,
 }
 
 impl Button {
-    pub fn to_index(&self) -> u8 {
-        use Button::*;
-        match self {
-            Button1 => 1,
-            Button2 => 2,
-            Button3 => 3,
-            Button4 => 4,
-            Button5 => 5,
-            Button6 => 6,
-            Button7 => 7,
-            Button8 => 8,
-            Button9 => 9,
-            Button10 => 10,
-            Button11 => 11,
-            Button12 => 12,
-            Button13 => 13,
-            Button14 => 14,
-            Button15 => 15,
-            Button16 => 16,
-        }
-    }
-
-    pub fn from_index(index: u8) -> Option<Button> {
-        use Button::*;
-        Some(match index {
-            1 => Button1,
-            2 => Button2,
-            3 => Button3,
-            4 => Button4,
-            5 => Button5,
-            6 => Button6,
-            7 => Button7,
-            8 => Button8,
-            9 => Button9,
-            10 => Button10,
-            11 => Button11,
-            12 => Button12,
-            13 => Button13,
-            14 => Button14,
-            15 => Button15,
-            16 => Button16,
-            _ => return None,
-        })
+    impl_midi! {
+        Button1 => 0x59,
+        Button2 => 0x5a,
+        Button3 => 0x28,
+        Button4 => 0x29,
+        Button5 => 0x2a,
+        Button6 => 0x2b,
+        Button7 => 0x2c,
+        Button8 => 0x2d,
+        Button9 => 0x57,
+        Button10 => 0x58,
+        Button11 => 0x5b,
+        Button12 => 0x5c,
+        Button13 => 0x56,
+        Button14 => 0x5d,
+        Button15 => 0x5e,
+        Button16 => 0x5f,
+        LayerA => 0x54,
+        LayerB => 0x55,
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(usize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, EnumIter)]
 pub enum Knob {
+    // These u8 values are for knob turn messages.
+    // For knob press, add 0x10 to the value.
     Knob1,
     Knob2,
     Knob3,
@@ -243,125 +126,137 @@ pub enum Knob {
 }
 
 impl Knob {
-    pub fn to_index(&self) -> u8 {
-        use Knob::*;
-        match self {
-            Knob1 => 1,
-            Knob2 => 2,
-            Knob3 => 3,
-            Knob4 => 4,
-            Knob5 => 5,
-            Knob6 => 6,
-            Knob7 => 7,
-            Knob8 => 8,
-        }
-    }
-
-    pub fn from_index(index: u8) -> Option<Knob> {
-        use Knob::*;
-        Some(match index {
-            1 => Knob1,
-            2 => Knob2,
-            3 => Knob3,
-            4 => Knob4,
-            5 => Knob5,
-            6 => Knob6,
-            7 => Knob7,
-            8 => Knob8,
-            _ => return None,
-        })
+    impl_midi! {
+        Knob1 => 0x01,
+        Knob2 => 0x02,
+        Knob3 => 0x03,
+        Knob4 => 0x04,
+        Knob5 => 0x05,
+        Knob6 => 0x06,
+        Knob7 => 0x07,
+        Knob8 => 0x08,
     }
 }
 
+#[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum RingLighting {
-    Off,
-    On(RingIndex),
-    Blink(RingIndex),
-    AllOn,
-    AllBlink,
-}
-
-impl Default for RingLighting {
-    fn default() -> Self {
-        Self::Off
-    }
-}
-
-impl RingLighting {
-    pub fn as_u8(&self) -> u8 {
-        use RingLighting::*;
-        match self {
-            Off => 0,
-            On(index) => index.0,
-            Blink(index) => index.0 + 13,
-            AllOn => 26,
-            AllBlink => 27,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
-pub struct RingIndex(u8);
-
-impl RingIndex {
-    pub fn new(value: u8) -> Result<RingIndex, ()> {
-        if value < 13 {
-            Ok(Self(value))
-        } else {
-            Err(())
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ButtonLight {
+pub enum ButtonLedState {
     Off,
     On,
     Blink,
 }
 
-impl Default for ButtonLight {
+impl ButtonLedState {
+    impl_midi! {
+        Off => 0x00,
+        On => 0x7f,
+        Blink => 0x01,
+    }
+}
+
+impl Default for ButtonLedState {
     fn default() -> Self {
         Self::Off
     }
 }
 
-impl ButtonLight {
-    pub fn as_u8(&self) -> u8 {
-        use ButtonLight::*;
-        match self {
-            Off => 0,
-            On => 1,
-            Blink => 2,
-        }
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+pub struct KnobValue(pub(crate) u8);
+
+impl KnobValue {
+    pub const MIN: KnobValue = KnobValue(0);
+
+    // There are 12 LEDs, but the max knob value in MC mode is actually 11
+    pub const MAX: KnobValue = KnobValue(12);
+
+    pub fn new(value: u8) -> Self {
+        Self(value.min(Self::MAX.0))
+    }
+
+    pub fn from_percent(value: f64) -> Self {
+        Self::new(((Self::MAX.0 as f64) * value) as u8)
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum RingLedBehavior {
+pub enum KnobLedStyle {
+    /// One LED is lit
     Single,
+    /// Doesn't work in MC mode
     Pan,
+    /// Light all LEDs from the left until the current value
     Fan,
+    /// Same as Single in MC mode
     Spread,
+    /// Light all LEDs from the top until the current value, on one side
     Trim,
 }
 
-impl Default for RingLedBehavior {
+impl Default for KnobLedStyle {
     fn default() -> Self {
         Self::Single
     }
 }
 
-impl RingLedBehavior {
-    pub fn as_u8(&self) -> u8 {
-        use RingLedBehavior::*;
-        match self {
-            Single => 0,
-            Pan => 1,
-            Fan => 2,
-            Spread => 3,
-            Trim => 4,
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+pub struct FaderValue(pub u8);
+
+impl FaderValue {
+    pub const MIN: FaderValue = FaderValue(0);
+    pub const MAX: FaderValue = FaderValue(127);
+
+    pub fn as_percent(&self) -> f64 {
+        self.0 as f64 / Self::MAX.0 as f64
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Event {
+    ButtonPressed { button: Button, is_down: bool },
+    KnobPressed { knob: Knob, is_down: bool },
+    KnobTurned { knob: Knob, delta: i8 },
+    FaderMoved { value: FaderValue },
+}
+
+impl TryFrom<&[u8]> for Event {
+    type Error = anyhow::Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Event> {
+        use Event::*;
+
+        match bytes {
+            &[0xb0, controller_num, value] => {
+                let delta = if value >= 64 {
+                    -((value - 64) as i8)
+                } else {
+                    value as i8
+                };
+
+                Ok(KnobTurned {
+                    knob: Knob::from_midi(controller_num - 0x0f)
+                        .context("unknown controller number for knob")?,
+                    delta,
+                })
+            }
+            &[0xe8, _, value] => Ok(Event::FaderMoved {
+                value: FaderValue(value),
+            }),
+            &[0x90, note, state] => {
+                let is_down = state != 0;
+
+                if note >= 0x20 && note <= 0x27 {
+                    Ok(Event::KnobPressed {
+                        knob: Knob::from_midi(note - 0x1f).context("unknown note for knob")?,
+                        is_down,
+                    })
+                } else {
+                    Ok(Event::ButtonPressed {
+                        button: Button::from_midi(note).context("unknown note for button")?,
+                        is_down,
+                    })
+                }
+            }
+            _ => bail!("unknown event: {:?}", bytes),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::model::{Button, ButtonLight, CcValue, Knob, Layer, RingLedBehavior, RingLighting};
+use crate::model::*;
 use crate::MIDI_DEVICE_NAME;
 use anyhow::{Context as _, Result};
 use futures::channel::mpsc;
@@ -19,12 +19,15 @@ impl Controller {
             while let Some(command) = rx.next().await {
                 if let Err(e) = connection.send(&command.as_bytes()) {
                     // TODO
-                    eprintln!("Failed to send: {}", e);
+                    eprintln!("Failed to send command to controller: {}", e);
                 }
             }
         };
 
-        let controller = Self { sender: tx };
+        let mut controller = Self { sender: tx };
+        controller.send(Command::SetOperationMode {
+            mode: OperationMode::MackieControl,
+        })?;
 
         Ok((controller, worker))
     }
@@ -53,64 +56,49 @@ fn get_output_port(port_name: &str) -> Result<MidiOutputConnection> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    SetButtonLight {
+    SetButtonLedState {
         button: Button,
-        state: ButtonLight,
+        state: ButtonLedState,
     },
-    SetLayer {
-        layer: Layer,
-    },
-    SetMode {
-        mc: bool,
-    },
-    SetRingLedBehavior {
+    SetKnobLedState {
         knob: Knob,
-        behavior: RingLedBehavior,
+        state: KnobState,
     },
-    SetRingLighting {
-        knob: Knob,
-        lighting: RingLighting,
-    },
-    SetKnobValue {
-        knob: Knob,
-        value: CcValue,
+    SetOperationMode {
+        mode: OperationMode,
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OperationMode {
+    Standard,
+    MackieControl,
+}
+
 impl Command {
-    // Commands via this Amazon review:
-    // https://amazon.com/gp/customer-reviews/R3PVLSSOLJO50D
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> [u8; 3] {
         use Command::*;
         match self {
-            SetButtonLight { button, state } => {
-                // 0x90 [0..15] n Set button LED 0=off, 1=on, 2=blink
-                vec![0x90, button.to_index() - 1, state.as_u8()]
-            }
-            SetLayer { layer } => {
-                // 0xC0 n Select layer 0=Layer A (default), 1=Layer B (ONLY IF NOT IN MC MODE)
-                let layer_value = match layer {
-                    Layer::A => 0,
-                    Layer::B => 1,
+            SetButtonLedState { button, state } => [0x90, button.to_midi(), state.to_midi()],
+            SetKnobLedState { knob, state } => {
+                use KnobLedStyle::*;
+                let value = state.value.0;
+                let midi_value = match state.style {
+                    Single => value,
+                    Trim => value + 0x10,
+                    Fan => value + 0x20,
+                    Spread => value + 0x40,
+                    Pan => value + 0x50, // This doesn't actually do anything in MC mode
                 };
 
-                vec![0xc0, layer_value]
+                [0xb0, 0x2f + knob.to_midi(), midi_value]
             }
-            SetMode { mc } => {
-                // 0xB0 127 n Set mode 0=standard (default), 1=MC
-                vec![0xb0, 127, if *mc { 1 } else { 0 }]
-            }
-            SetRingLedBehavior { knob, behavior } => {
-                // 0xB0 [1..8] n Set LED ring mode 0=single, 1=pan, 2=fan, 3=spread, 4=trim
-                vec![0xb0, knob.to_index(), behavior.as_u8()]
-            }
-            SetKnobValue { knob, value } => {
-                // 0xBA [1..8] n Set knob position to n
-                vec![0xba, knob.to_index(), value.0]
-            }
-            SetRingLighting { knob, lighting } => {
-                // 0xB0 [9..16] n Set LED ring illumination 0=off [1..13]=on, [14..26]=blink, 26=all on, 27=all blink
-                vec![0xb0, knob.to_index() + 8, lighting.as_u8()]
+            SetOperationMode { mode } => {
+                let data = match mode {
+                    OperationMode::Standard => 0,
+                    OperationMode::MackieControl => 1,
+                };
+                [0xb0, 0x7f, data]
             }
         }
     }
