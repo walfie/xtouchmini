@@ -1,8 +1,8 @@
 // Heavily based on the Mackie Control values from Jon Skeet's project:
 // https://github.com/jskeet/DemoCode/blob/c73e36e45bd01e1327b529b3b7de300ed7f01601/XTouchMini/XTouchMini.Model/XTouchMiniMackieController.cs#L115
 
-use anyhow::{bail, Result};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
+use anyhow::{bail, Context, Result};
+use num_enum::IntoPrimitive;
 use std::convert::TryFrom;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -18,40 +18,80 @@ pub struct KnobState {
     pub value: KnobValue,
 }
 
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
-pub enum Button {
-    // Top row
-    Button1 = 0x59,
-    Button2 = 0x5a,
-    Button3 = 0x28,
-    Button4 = 0x29,
-    Button5 = 0x2a,
-    Button6 = 0x2b,
-    Button7 = 0x2c,
-    Button8 = 0x2d,
+macro_rules! impl_midi {
+    ($($variant:ident => $value:expr),+ $(,)?) => (
+        pub fn to_midi(&self) -> u8 {
+            match self {
+                $(Self::$variant => $value,)*
+            }
+        }
 
-    // Bottom row
-    Button9 = 0x57,
-    Button10 = 0x58,
-    Button11 = 0x5b,
-    Button12 = 0x5c,
-    Button13 = 0x56,
-    Button14 = 0x5d,
-    Button15 = 0x5e,
-    Button16 = 0x5f,
-
-    // Layer buttons
-    LayerA = 0x54,
-    LayerB = 0x55,
+        pub fn from_midi(value: u8) -> Option<Self> {
+            Some(match value {
+                $($value => Self::$variant,)*
+                _ => return None,
+            })
+        }
+    )
 }
 
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
+#[repr(usize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive)]
+pub enum Button {
+    // Top row
+    Button1,
+    Button2,
+    Button3,
+    Button4,
+    Button5,
+    Button6,
+    Button7,
+    Button8,
+
+    // Bottom row
+    Button9,
+    Button10,
+    Button11,
+    Button12,
+    Button13,
+    Button14,
+    Button15,
+    Button16,
+
+    // Layer buttons
+    LayerA,
+    LayerB,
+}
+
+impl Button {
+    impl_midi! {
+        Button1 => 0x59,
+        Button2 => 0x5a,
+        Button3 => 0x28,
+        Button4 => 0x29,
+        Button5 => 0x2a,
+        Button6 => 0x2b,
+        Button7 => 0x2c,
+        Button8 => 0x2d,
+        Button9 => 0x57,
+        Button10 => 0x58,
+        Button11 => 0x5b,
+        Button12 => 0x5c,
+        Button13 => 0x56,
+        Button14 => 0x5d,
+        Button15 => 0x5e,
+        Button16 => 0x5f,
+        LayerA => 0x54,
+        LayerB => 0x55,
+    }
+}
+
+#[repr(usize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive)]
 pub enum Knob {
     // These u8 values are for knob turn messages.
     // For knob press, add 0x10 to the value.
-    Knob1 = 0x01,
+    Knob1,
     Knob2,
     Knob3,
     Knob4,
@@ -61,12 +101,33 @@ pub enum Knob {
     Knob8,
 }
 
+impl Knob {
+    impl_midi! {
+        Knob1 => 0x01,
+        Knob2 => 0x02,
+        Knob3 => 0x03,
+        Knob4 => 0x04,
+        Knob5 => 0x05,
+        Knob6 => 0x06,
+        Knob7 => 0x07,
+        Knob8 => 0x08,
+    }
+}
+
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, IntoPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ButtonLedState {
-    Off = 0x00,
-    On = 0x7f,
-    Blink = 0x01,
+    Off,
+    On,
+    Blink,
+}
+
+impl ButtonLedState {
+    impl_midi! {
+        Off => 0x00,
+        On => 0x7f,
+        Blink => 0x01,
+    }
 }
 
 impl Default for ButtonLedState {
@@ -99,7 +160,7 @@ pub enum KnobLedStyle {
     Single,
     /// Doesn't work in MC mode
     Pan,
-    /// Light all LEDs from the top until the current value, on both sides
+    /// Light all LEDs from the left until the current value
     Fan,
     /// Same as Single in MC mode
     Spread,
@@ -140,7 +201,7 @@ impl TryFrom<&[u8]> for Event {
         use Event::*;
 
         match bytes {
-            &[0xb0, channel, value] => {
+            &[0xb0, controller_num, value] => {
                 let delta = if value >= 64 {
                     -((value - 64) as i8)
                 } else {
@@ -148,24 +209,25 @@ impl TryFrom<&[u8]> for Event {
                 };
 
                 Ok(KnobTurned {
-                    knob: Knob::try_from(channel - 0x0f)?,
+                    knob: Knob::from_midi(controller_num - 0x0f)
+                        .context("unknown controller number for knob")?,
                     delta,
                 })
             }
             &[0xe8, _, value] => Ok(Event::FaderMoved {
                 value: FaderValue(value),
             }),
-            &[0x90, channel, state] => {
+            &[0x90, note, state] => {
                 let is_down = state != 0;
 
-                if channel >= 0x20 && channel <= 0x27 {
+                if note >= 0x20 && note <= 0x27 {
                     Ok(Event::KnobPressed {
-                        knob: Knob::try_from(channel - 0x1f)?,
+                        knob: Knob::from_midi(note - 0x1f).context("unknown note for knob")?,
                         is_down,
                     })
                 } else {
                     Ok(Event::ButtonPressed {
-                        button: Button::try_from(channel)?,
+                        button: Button::from_midi(note).context("unknown note for button")?,
                         is_down,
                     })
                 }

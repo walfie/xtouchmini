@@ -67,7 +67,7 @@ impl Command {
     pub fn as_bytes(&self) -> [u8; 3] {
         use Command::*;
         match self {
-            SetButtonLedState { button, state } => [0x90, (*button).into(), (*state).into()],
+            SetButtonLedState { button, state } => [0x90, button.to_midi(), state.to_midi()],
             SetKnobLedState { knob, state } => {
                 use KnobLedStyle::*;
                 let value = state.value.0;
@@ -79,8 +79,7 @@ impl Command {
                     Pan => value + 0x50, // This doesn't actually do anything in MC mode
                 };
 
-                let knob_u8: u8 = (*knob).into();
-                [0xb0, 0x2f + knob_u8, midi_value]
+                [0xb0, 0x2f + knob.to_midi(), midi_value]
             }
         }
     }
