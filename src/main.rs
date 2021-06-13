@@ -1,5 +1,7 @@
 use anyhow::Result;
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
+use tokio::net::TcpStream;
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use xtouchmini::*;
 
 #[tokio::main]
@@ -15,6 +17,11 @@ async fn main() -> Result<()> {
     tokio::spawn(worker);
     let mut stream = EventStream::new()?;
 
+    let mut tcp = Framed::new(
+        TcpStream::connect("127.0.0.1:25565").await?,
+        LengthDelimitedCodec::new(),
+    );
+
     while let Some(event_opt) = stream.next().await {
         if let Ok(event) = event_opt {
             println!("{:?}", event);
@@ -27,6 +34,15 @@ async fn main() -> Result<()> {
                     };
 
                     controller.send(Command::SetButtonLedState { button, state })?;
+
+                    if is_down {
+                        let hotkey: usize = button.into();
+
+                        let msg = vtubestudio::Message::new_with_hotkey(hotkey as i32 + 1);
+
+                        let out = serde_json::to_vec(&msg)?;
+                        tcp.send(out.into()).await?;
+                    }
                 }
                 _ => {}
             }

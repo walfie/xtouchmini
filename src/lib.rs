@@ -1,6 +1,7 @@
 mod input;
 mod model;
 mod output;
+pub mod vtubestudio;
 
 pub use crate::input::EventStream;
 pub use crate::model::{

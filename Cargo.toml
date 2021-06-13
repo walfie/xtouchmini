@@ -14,6 +14,10 @@ num_enum = "0.5.1"
 obws = { git = "https://github.com/dnaka91/obws.git", rev = "b6e5835a643d9afa642f92fc56dda29af7b6d7b2" }
 osascript = "0.3.0"
 pin-project-lite = "0.2.6"
+serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0.64"
+serde_repr = "0.1.7"
 structopt = "0.3.21"
 strum = { version = "0.21", features = ["derive"] }
 tokio = { version = "1.6.1", features = ["full"] }
+tokio-util = { version = "0.6.7", features = ["codec"] }
