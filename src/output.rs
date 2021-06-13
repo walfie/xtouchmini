@@ -39,6 +39,13 @@ impl Controller {
     pub fn set_button(&mut self, button: Button, state: ButtonLedState) -> Result<()> {
         self.send(Command::SetButtonLedState { button, state })
     }
+
+    pub fn set_knob(&mut self, knob: Knob, style: KnobLedStyle, value: KnobValue) -> Result<()> {
+        self.send(Command::SetKnobLedState {
+            knob,
+            state: KnobState { style, value },
+        })
+    }
 }
 
 fn get_output_port(port_name: &str) -> Result<MidiOutputConnection> {

@@ -176,6 +176,10 @@ impl KnobValue {
     pub fn from_percent(value: f64) -> Self {
         Self::new(((Self::MAX.0 as f64) * value) as u8)
     }
+
+    pub fn from_percent_nonzero(value: f64) -> Self {
+        Self::new((((Self::MAX.0 - 1) as f64) * value) as u8 + 1)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

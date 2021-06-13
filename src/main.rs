@@ -54,6 +54,7 @@ async fn handle_knob(context: &mut Context, knob: Knob, delta: i8) -> Result<()>
     use vtubestudio::Param;
 
     match knob {
+        // Raise arms
         Knob::Knob1 | Knob::Knob2 => {
             let (param, multiplier) = if let Knob::Knob1 = knob {
                 (Param::CheekPuff, 0.01)
@@ -65,6 +66,18 @@ async fn handle_knob(context: &mut Context, knob: Knob, delta: i8) -> Result<()>
                 .max(0.0)
                 .min(1.0);
             context.vtube.set_param(param, value).await?;
+
+            let knob_value = if let Knob::Knob1 = knob {
+                value / 3.0
+            } else {
+                1.0 - value / 3.0
+            };
+
+            context.controller.set_knob(
+                knob,
+                KnobLedStyle::Single,
+                KnobValue::from_percent_nonzero(knob_value),
+            )?;
         }
         _ => {}
     }
