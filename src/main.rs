@@ -1,5 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
+use xtouchmini::keyboard;
 use xtouchmini::vtubestudio::Param;
 use xtouchmini::*;
 
@@ -40,10 +41,7 @@ async fn main() -> Result<()> {
                 Event::ButtonPressed { button, is_down } => {
                     handle_button(&mut context, button, is_down).await
                 }
-                Event::FaderMoved { value } => {
-                    context.controller.set_fader(value);
-                    Ok(())
-                }
+                Event::FaderMoved { value } => handle_fader(&mut context, value).await,
             };
 
             // On error, disable the last button to indicate that VTubeStudio failed
@@ -53,7 +51,7 @@ async fn main() -> Result<()> {
                 context
                     .controller
                     .set_button(Button::Button16, ButtonLedState::Off)?;
-            } else if !is_connected {
+            } else if !is_connected && context.vtube.is_connected() {
                 context
                     .controller
                     .set_button(Button::Button16, ButtonLedState::On)?;
@@ -68,6 +66,37 @@ async fn main() -> Result<()> {
 pub enum KnobAction {
     Turned { delta: i8 },
     Pressed { is_down: bool },
+}
+
+async fn handle_fader(context: &mut Context, value: FaderValue) -> Result<()> {
+    fn type_string_or_backspace(string: &str, prev: FaderValue, current: FaderValue) {
+        use autopilot::key::KeyCode;
+
+        if current.0 > prev.0 {
+            let last = if let Some(c) = string.chars().last() {
+                c
+            } else {
+                return;
+            };
+
+            for i in prev.0..current.0 {
+                let c = string.chars().nth(i as usize).unwrap_or(last);
+                keyboard::tap_char(c);
+            }
+        } else {
+            for _ in 0..(prev.0 - current.0) {
+                keyboard::tap_key(KeyCode::Backspace);
+            }
+        }
+    }
+
+    if *context.controller.state().button(Button::LayerA) == ButtonLedState::On {
+        let prev = context.controller.state().fader();
+        type_string_or_backspace("Let's go", *prev, value);
+    }
+
+    context.controller.set_fader(value);
+    Ok(())
 }
 
 async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> Result<()> {
@@ -200,6 +229,9 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
         Button::Button16 => {
             // Reset expressions
             context.vtube.toggle_hotkey(8).await?;
+        }
+        Button::LayerA | Button::LayerB => {
+            context.controller.negate_button(button)?;
         }
         _ => {}
     }

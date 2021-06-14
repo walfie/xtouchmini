@@ -1,4 +1,5 @@
 mod input;
+pub mod keyboard;
 mod model;
 mod output;
 pub mod vtubestudio;
