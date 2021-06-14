@@ -75,7 +75,7 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
 
     match (knob, action) {
         // Raise arms
-        (knob, Turned { delta }) if matches!(knob, Knob::Knob1 | Knob::Knob2) => {
+        (knob, action) if matches!(knob, Knob::Knob1 | Knob::Knob2) => {
             let multiplier = context.controller.state().fader().as_percent() * 0.1 + 0.01;
             let (param, multiplier) = if let Knob::Knob1 = knob {
                 (Param::CheekPuff, multiplier)
@@ -83,9 +83,14 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
                 (Param::FaceAngry, -multiplier)
             };
 
-            let value = (context.vtube.param(param) + (delta as f64 * multiplier))
-                .max(0.0)
-                .min(1.0);
+            let value = match action {
+                Turned { delta } => (context.vtube.param(param) + (delta as f64 * multiplier))
+                    .max(0.0)
+                    .min(1.0),
+                Pressed { is_down: true } => 0.0,
+                _ => return Ok(()),
+            };
+
             context.vtube.set_param(param, value).await?;
 
             let knob_value = if let Knob::Knob1 = knob {
