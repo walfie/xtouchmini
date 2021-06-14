@@ -50,6 +50,12 @@ impl Controller {
         self.send(Command::SetButtonLedState { button, state })
     }
 
+    pub fn negate_button(&mut self, button: Button) -> Result<()> {
+        let state = self.state.button(button).negate();
+        self.set_button(button, state)?;
+        Ok(())
+    }
+
     pub fn set_knob(&mut self, knob: Knob, style: KnobLedStyle, value: KnobValue) -> Result<()> {
         let state = {
             let state = self.state.knob_mut(knob);

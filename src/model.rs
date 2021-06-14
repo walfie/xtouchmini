@@ -178,6 +178,14 @@ pub enum ButtonLedState {
 }
 
 impl ButtonLedState {
+    pub fn negate(&self) -> ButtonLedState {
+        match self {
+            Self::Off => Self::On,
+            Self::On => Self::Off,
+            Self::Blink => Self::Blink,
+        }
+    }
+
     impl_midi! {
         Off => 0x00,
         On => 0x7f,

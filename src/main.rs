@@ -167,12 +167,14 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
     }
 
     match button {
-        Button::Button1 => set_expression(context, button, 1.0).await?,
-        Button::Button2 => set_expression(context, button, 2.0).await?,
-        Button::Button3 => set_expression(context, button, 3.0).await?,
-        Button::Button4 => set_expression(context, button, 4.0).await?,
-        Button::Button5 => set_expression(context, button, 5.0).await?,
-        Button::Button6 => set_expression(context, button, 6.0).await?,
+        Button::Button1 => set_expression(context, button, 1.0).await?, // Sad
+        Button::Button2 => set_expression(context, button, 2.0).await?, // Angry
+        Button::Button3 => set_expression(context, button, 3.0).await?, // Shock
+        Button::Button4 => set_expression(context, button, 4.0).await?, // Smug
+        Button::Button5 => set_expression(context, button, 5.0).await?, // Excited
+        Button::Button6 => set_expression(context, button, 6.0).await?, // Crying
+        Button::Button7 => context.vtube.toggle_hotkey(2).await?,       // Dance
+        Button::Button8 => context.vtube.toggle_hotkey(3).await?,       // Dab
         Button::Button9 => {
             let was_frowning = context.vtube.param(Param::TongueOut) == 1.0;
 
@@ -184,6 +186,15 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
 
             context.vtube.set_param(Param::TongueOut, value).await?;
             context.controller.set_button(button, state)?;
+        }
+        Button::Button10 => {
+            // Toggle sunglasses
+            context.vtube.toggle_hotkey(1).await?;
+            context.controller.negate_button(button)?;
+        }
+        Button::Button16 => {
+            // Reset expressions
+            context.vtube.toggle_hotkey(8).await?;
         }
         _ => {}
     }
