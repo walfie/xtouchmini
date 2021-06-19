@@ -3,6 +3,7 @@ use futures::StreamExt;
 use xtouchmini::keyboard;
 use xtouchmini::vtubestudio::Param;
 use xtouchmini::*;
+use autopilot::key::{Code, KeyCode};
 
 struct Context {
     controller: Controller,
@@ -69,30 +70,32 @@ pub enum KnobAction {
 }
 
 async fn handle_fader(context: &mut Context, value: FaderValue) -> Result<()> {
-    fn type_string_or_backspace(string: &str, prev: FaderValue, current: FaderValue) {
-        use autopilot::key::KeyCode;
+    fn type_string_or_backspace(string: &str, prev: FaderValue, current: FaderValue, friction: u8) {
+        let friction = friction.max(1);
+        let current = current.0 / friction;
+        let prev = prev.0 / friction;
 
-        if current.0 > prev.0 {
+        if current > prev {
             let last = if let Some(c) = string.chars().last() {
                 c
             } else {
                 return;
             };
 
-            for i in prev.0..current.0 {
+            for i in prev..current {
                 let c = string.chars().nth(i as usize).unwrap_or(last);
                 keyboard::tap_char(c);
             }
         } else {
-            for _ in 0..(prev.0 - current.0) {
+            for _ in 0..(prev - current) {
                 keyboard::tap_key(KeyCode::Backspace);
             }
         }
     }
 
-    if *context.controller.state().button(Button::LayerA) == ButtonLedState::On {
+    if !context.controller.state().button(Button::LayerA).is_on() {
         let prev = context.controller.state().fader();
-        type_string_or_backspace("Let's go", *prev, value);
+        type_string_or_backspace("Let's go", *prev, value, 3);
     }
 
     context.controller.set_fader(value);
@@ -200,43 +203,109 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
         Ok(())
     }
 
-    match button {
-        Button::Button1 => set_expression(context, button, 1.0).await?, // Sad
-        Button::Button2 => set_expression(context, button, 2.0).await?, // Angry
-        Button::Button3 => set_expression(context, button, 3.0).await?, // Shock
-        Button::Button4 => set_expression(context, button, 4.0).await?, // Smug
-        Button::Button5 => set_expression(context, button, 5.0).await?, // Excited
-        Button::Button6 => set_expression(context, button, 6.0).await?, // Crying
-        Button::Button7 => context.vtube.toggle_hotkey(2).await?,       // Dance
-        Button::Button8 => context.vtube.toggle_hotkey(3).await?,       // Dab
-        Button::Button9 => {
-            let was_frowning = context.vtube.param(Param::TongueOut) == 1.0;
+    if matches!(button, Button::LayerA | Button::LayerB) {
+        context.controller.negate_button(button)?;
+    } else if context.controller.state().button(Button::LayerA).is_on() {
+        match button {
+            Button::Button1 => set_expression(context, button, 1.0).await?, // Sad
+            Button::Button2 => set_expression(context, button, 2.0).await?, // Angry
+            Button::Button3 => set_expression(context, button, 3.0).await?, // Shock
+            Button::Button4 => set_expression(context, button, 4.0).await?, // Smug
+            Button::Button5 => set_expression(context, button, 5.0).await?, // Excited
+            Button::Button6 => set_expression(context, button, 6.0).await?, // Crying
+            Button::Button7 => context.vtube.toggle_hotkey(2).await?,       // Dance
+            Button::Button8 => context.vtube.toggle_hotkey(3).await?,       // Dab
+            Button::Button9 => {
+                let was_frowning = context.vtube.param(Param::TongueOut) == 1.0;
 
-            let (value, state) = if was_frowning {
-                (0.0, ButtonLedState::Off)
-            } else {
-                (1.0, ButtonLedState::On)
-            };
+                let (value, state) = if was_frowning {
+                    (0.0, ButtonLedState::Off)
+                } else {
+                    (1.0, ButtonLedState::On)
+                };
 
-            context.vtube.set_param(Param::TongueOut, value).await?;
-            context.controller.set_button(button, state)?;
+                context.vtube.set_param(Param::TongueOut, value).await?;
+                context.controller.set_button(button, state)?;
+            }
+            Button::Button10 => {
+                // Toggle sunglasses
+                context.vtube.toggle_hotkey(1).await?;
+                context.controller.negate_button(button)?;
+            }
+            Button::Button16 => {
+                // Reset expressions
+                context.vtube.toggle_hotkey(8).await?;
+            }
+            _ => {}
         }
-        Button::Button10 => {
-            // Toggle sunglasses
-            context.vtube.toggle_hotkey(1).await?;
-            context.controller.negate_button(button)?;
+
+        context.vtube.refresh_params().await?;
+    } else {
+        match button {
+            Button::Button1 => keyboard::type_text("👏"),
+            Button::Button2 => keyboard::type_text("🔜"),
+            Button::Button3 => keyboard::type_text("👀"),
+            Button::Button4 => keyboard::type_text("🙇"),
+            Button::Button16 => keyboard::tap_key(KeyCode::Return),
+            Button::Button8 => {
+                // Find YouTube tab in Chrome, and focus on the chat input field
+                #[rustfmt::skip]
+                osascript::JavaScript::new(r#"
+                    const app = Application("Google Chrome");
+                    app.activate();
+
+                    const youtubeUrl = "youtube.com/watch?v=";
+
+                    // Find YouTube tab
+                    if (!app.windows[0].activeTab.url().includes(youtubeUrl)) {
+                        for (const [winIndex, win] of app.windows().entries()) {
+                            const tabIndex = win
+                                .tabs()
+                                .findIndex(tab => tab.url().includes(youtubeUrl));
+
+                            if (tabIndex != -1) {
+                                win.activeTabIndex = tabIndex + 1;
+                                if (winIndex != 0) {
+                                    win.index = 1;
+                                    win.visible = false;
+                                    win.visible = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    const javascript = `
+                        (() => {
+                            const el = document
+                                .querySelector('#chatframe')
+                                .contentWindow
+                                .document
+                                .querySelector('#input')
+                                .querySelector('#input');
+
+                            const selection = window.getSelection();
+                            const range = document.createRange();
+                            selection.removeAllRanges();
+                            range.selectNodeContents(el);
+                            range.collapse(false);
+                            selection.addRange(range);
+                            el.focus();
+                        })();
+                    `;
+
+                    app.execute(app.windows[0].activeTab, { javascript });
+                "#)
+                .execute()?;
+            }
+            Button::Button9 => {
+                use autopilot::key::Flag::{Control, Meta};
+                autopilot::key::tap(&Code(KeyCode::Space), &[Meta, Control], 0, 0);
+            }
+
+            _ => {}
         }
-        Button::Button16 => {
-            // Reset expressions
-            context.vtube.toggle_hotkey(8).await?;
-        }
-        Button::LayerA | Button::LayerB => {
-            context.controller.negate_button(button)?;
-        }
-        _ => {}
     }
-
-    context.vtube.refresh_params().await?;
 
     Ok(())
 }

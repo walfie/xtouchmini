@@ -178,6 +178,10 @@ pub enum ButtonLedState {
 }
 
 impl ButtonLedState {
+    pub fn is_on(&self) -> bool {
+        matches!(self, Self::On)
+    }
+
     pub fn negate(&self) -> ButtonLedState {
         match self {
             Self::Off => Self::On,
