@@ -7,11 +7,9 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.41"
 autopilot = "0.4.0"
-either = "1.6.1"
 futures = "0.3.15"
 midir = "0.7.0"
 num_enum = "0.5.1"
-obws = { git = "https://github.com/dnaka91/obws.git", rev = "b6e5835a643d9afa642f92fc56dda29af7b6d7b2" }
 osascript = "0.3.0"
 pin-project-lite = "0.2.6"
 serde = { version = "1.0.126", features = ["derive"] }
