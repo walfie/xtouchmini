@@ -1,6 +1,7 @@
 use anyhow::Result;
 use autopilot::key::{Code, KeyCode};
 use futures::StreamExt;
+use tracing::{debug, error};
 use xtouchmini::keyboard;
 use xtouchmini::vtubestudio::Param;
 use xtouchmini::*;
@@ -12,6 +13,8 @@ struct Context {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
     let (mut controller, worker) = Controller::new()?;
 
     tokio::spawn(worker);
@@ -30,7 +33,7 @@ async fn main() -> Result<()> {
         if let Ok(event) = event_opt {
             let is_connected = context.vtube.is_connected();
 
-            println!("{:?}", event); // TODO: Debug log
+            debug!(event = ?event);
 
             let result = match event {
                 Event::KnobTurned { knob, delta } => {
@@ -47,8 +50,8 @@ async fn main() -> Result<()> {
 
             // On error, disable the last button to indicate that VTubeStudio failed
             // TODO: Add specific error variant
-            if let Err(e) = result {
-                eprintln!("{}", e); // TODO: Logger
+            if let Err(error) = result {
+                error!(?error);
                 context
                     .controller
                     .set_button(Button::Button16, ButtonLedState::Off)?;

@@ -8,6 +8,7 @@ use midir::{Ignore, MidiInput, MidiInputConnection};
 use pin_project_lite::pin_project;
 use std::convert::TryFrom;
 use std::pin::Pin;
+use tracing::error;
 
 pin_project! {
     pub struct EventStream {
@@ -21,8 +22,8 @@ impl EventStream {
     pub fn new() -> Result<Self> {
         let (tx, rx) = mpsc::unbounded();
         let connection = get_input_port(MIDI_DEVICE_NAME, move |event| {
-            if let Err(e) = tx.unbounded_send(event) {
-                eprintln!("Failed to send: {}", e);
+            if let Err(error) = tx.unbounded_send(event) {
+                error!(?error, "Failed to send controller event to stream");
             }
         })?;
 

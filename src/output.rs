@@ -5,6 +5,7 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use midir::{MidiOutput, MidiOutputConnection};
 use std::future::Future;
+use tracing::error;
 
 #[derive(Clone, Debug)]
 pub struct Controller {
@@ -19,9 +20,8 @@ impl Controller {
 
         let worker = async move {
             while let Some(command) = rx.next().await {
-                if let Err(e) = connection.send(&command.as_bytes()) {
-                    // TODO
-                    eprintln!("Failed to send command to controller: {}", e);
+                if let Err(error) = connection.send(&command.as_bytes()) {
+                    error!(?error, "Failed to send command to controller");
                 }
             }
         };
