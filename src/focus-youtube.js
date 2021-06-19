@@ -12,8 +12,8 @@ if (!app.windows[0].activeTab.url().includes(youtubeUrl)) {
 
     if (tabIndex != -1) {
       win.activeTabIndex = tabIndex + 1;
+      win.index = 1;
       if (winIndex != 0) {
-        win.index = 1;
         win.visible = false;
         win.visible = true;
       }
