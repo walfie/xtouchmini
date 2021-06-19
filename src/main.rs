@@ -1,9 +1,9 @@
 use anyhow::Result;
+use autopilot::key::{Code, KeyCode};
 use futures::StreamExt;
 use xtouchmini::keyboard;
 use xtouchmini::vtubestudio::Param;
 use xtouchmini::*;
-use autopilot::key::{Code, KeyCode};
 
 struct Context {
     controller: Controller,
@@ -249,54 +249,7 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
             Button::Button16 => keyboard::tap_key(KeyCode::Return),
             Button::Button8 => {
                 // Find YouTube tab in Chrome, and focus on the chat input field
-                #[rustfmt::skip]
-                osascript::JavaScript::new(r#"
-                    const app = Application("Google Chrome");
-                    app.activate();
-
-                    const youtubeUrl = "youtube.com/watch?v=";
-
-                    // Find YouTube tab
-                    if (!app.windows[0].activeTab.url().includes(youtubeUrl)) {
-                        for (const [winIndex, win] of app.windows().entries()) {
-                            const tabIndex = win
-                                .tabs()
-                                .findIndex(tab => tab.url().includes(youtubeUrl));
-
-                            if (tabIndex != -1) {
-                                win.activeTabIndex = tabIndex + 1;
-                                if (winIndex != 0) {
-                                    win.index = 1;
-                                    win.visible = false;
-                                    win.visible = true;
-                                }
-                                break;
-                            }
-                        }
-                    }
-
-                    const javascript = `
-                        (() => {
-                            const el = document
-                                .querySelector('#chatframe')
-                                .contentWindow
-                                .document
-                                .querySelector('#input')
-                                .querySelector('#input');
-
-                            const selection = window.getSelection();
-                            const range = document.createRange();
-                            selection.removeAllRanges();
-                            range.selectNodeContents(el);
-                            range.collapse(false);
-                            selection.addRange(range);
-                            el.focus();
-                        })();
-                    `;
-
-                    app.execute(app.windows[0].activeTab, { javascript });
-                "#)
-                .execute()?;
+                osascript::JavaScript::new(include_str!("focus-youtube.js")).execute()?;
             }
             Button::Button9 => {
                 use autopilot::key::Flag::{Control, Meta};
