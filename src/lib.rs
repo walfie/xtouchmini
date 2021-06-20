@@ -6,8 +6,8 @@ pub mod vtubestudio;
 
 pub use crate::input::EventStream;
 pub use crate::model::{
-    Button, ButtonLedState, ControllerState, Event, FaderValue, Knob, KnobLedStyle, KnobState,
-    KnobValue,
+    Button, ButtonLedState, ControllerState, Event, FaderValue, Knob, KnobLedStyle, KnobLedValue,
+    KnobState,
 };
 pub use crate::output::{Command, Controller};
 

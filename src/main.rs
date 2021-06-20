@@ -1,4 +1,5 @@
 use anyhow::Result;
+use autopilot::key::Flag::{Control, Meta, Shift};
 use autopilot::key::{Code, KeyCode};
 use futures::StreamExt;
 use tracing::{debug, error};
@@ -37,10 +38,10 @@ async fn main() -> Result<()> {
 
             let result = match event {
                 Event::KnobTurned { knob, delta } => {
-                    handle_knob(&mut context, knob, KnobAction::Turned { delta }).await
+                    handle_knob(&mut context, knob, &KnobAction::Turned { delta }).await
                 }
                 Event::KnobPressed { knob, is_down } => {
-                    handle_knob(&mut context, knob, KnobAction::Pressed { is_down }).await
+                    handle_knob(&mut context, knob, &KnobAction::Pressed { is_down }).await
                 }
                 Event::ButtonPressed { button, is_down } => {
                     handle_button(&mut context, button, is_down).await
@@ -68,7 +69,7 @@ async fn main() -> Result<()> {
 
 #[derive(Clone, Debug)]
 pub enum KnobAction {
-    Turned { delta: i8 },
+    Turned { delta: i32 },
     Pressed { is_down: bool },
 }
 
@@ -105,7 +106,43 @@ async fn handle_fader(context: &mut Context, value: FaderValue) -> Result<()> {
     Ok(())
 }
 
-async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> Result<()> {
+async fn handle_knob(context: &mut Context, knob: Knob, action: &KnobAction) -> Result<()> {
+    if context.controller.state().button(Button::LayerA).is_on() {
+        handle_knob_layer_a(context, knob, action).await?;
+    } else {
+        handle_knob_default(context, knob, action).await?;
+    }
+
+    if let KnobAction::Turned { delta } = action {
+        context.controller.apply_knob_diff(knob, *delta)
+    }
+
+    Ok(())
+}
+
+async fn handle_knob_default(context: &mut Context, knob: Knob, action: &KnobAction) -> Result<()> {
+    use KnobAction::*;
+
+    let prev = context.controller.state().knob(knob).value;
+
+    match (knob, action) {
+        (Knob::Knob1, Turned { delta }) => {
+            let friction = 4;
+            let normalized_delta = prev % friction + *delta;
+
+            if normalized_delta >= friction {
+                autopilot::key::tap(&Code(KeyCode::Tab), &[Control], 0, 0);
+            } else if normalized_delta < 0 {
+                autopilot::key::tap(&Code(KeyCode::Tab), &[Control, Shift], 0, 0);
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+async fn handle_knob_layer_a(context: &mut Context, knob: Knob, action: &KnobAction) -> Result<()> {
     use KnobAction::*;
 
     match (knob, action) {
@@ -119,7 +156,7 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
             };
 
             let value = match action {
-                Turned { delta } => (context.vtube.param(param) + (delta as f64 * multiplier))
+                Turned { delta } => (context.vtube.param(param) + (*delta as f64 * multiplier))
                     .max(0.0)
                     .min(1.0),
                 Pressed { is_down: true } => 0.0,
@@ -137,7 +174,7 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
             context.controller.set_knob(
                 knob,
                 KnobLedStyle::Single,
-                KnobValue::from_percent_nonzero(knob_value),
+                KnobLedValue::from_percent_nonzero(knob_value),
             )?;
         }
         // Spin
@@ -148,7 +185,7 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
 
             let value = match action {
                 Turned { delta } => {
-                    let value = context.vtube.param(param) + (delta as f64 * multiplier);
+                    let value = context.vtube.param(param) + (*delta as f64 * multiplier);
 
                     if value < 0.0 {
                         max - value
@@ -167,7 +204,7 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: KnobAction) -> R
             context.controller.set_knob(
                 knob,
                 KnobLedStyle::Single,
-                KnobValue::from_percent_nonzero(value / max),
+                KnobLedValue::from_percent_nonzero(value / max),
             )?;
         }
         _ => {}
@@ -255,7 +292,6 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
                 osascript::JavaScript::new(include_str!("focus-youtube.js")).execute()?;
             }
             Button::Button9 => {
-                use autopilot::key::Flag::{Control, Meta};
                 autopilot::key::tap(&Code(KeyCode::Space), &[Meta, Control], 0, 0);
             }
 

@@ -56,11 +56,15 @@ impl Controller {
         Ok(())
     }
 
-    pub fn set_knob(&mut self, knob: Knob, style: KnobLedStyle, value: KnobValue) -> Result<()> {
+    pub fn apply_knob_diff(&mut self, knob: Knob, delta: i32) {
+        self.state.knob_mut(knob).value += delta;
+    }
+
+    pub fn set_knob(&mut self, knob: Knob, style: KnobLedStyle, value: KnobLedValue) -> Result<()> {
         let state = {
             let state = self.state.knob_mut(knob);
             state.style = style;
-            state.value = value;
+            state.led_value = value;
             state.clone()
         };
 
@@ -121,7 +125,7 @@ impl Command {
             SetButtonLedState { button, state } => [0x90, button.to_midi(), state.to_midi()],
             SetKnobLedState { knob, state } => {
                 use KnobLedStyle::*;
-                let value = state.value.0;
+                let value = state.led_value.0;
                 let midi_value = match state.style {
                     Single => value,
                     Trim => value + 0x10,

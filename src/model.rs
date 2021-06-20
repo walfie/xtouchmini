@@ -62,7 +62,8 @@ impl ControllerState {
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct KnobState {
     pub style: KnobLedStyle,
-    pub value: KnobValue,
+    pub value: i32,
+    pub led_value: KnobLedValue,
 }
 
 macro_rules! impl_midi {
@@ -204,13 +205,13 @@ impl Default for ButtonLedState {
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
-pub struct KnobValue(pub(crate) u8);
+pub struct KnobLedValue(pub(crate) u8);
 
-impl KnobValue {
-    pub const MIN: KnobValue = KnobValue(0);
+impl KnobLedValue {
+    pub const MIN: KnobLedValue = KnobLedValue(0);
 
     // There are 12 LEDs, but the max knob value in MC mode is actually 11
-    pub const MAX: KnobValue = KnobValue(12);
+    pub const MAX: KnobLedValue = KnobLedValue(12);
 
     pub fn new(value: u8) -> Self {
         Self(value.min(Self::MAX.0))
@@ -261,7 +262,7 @@ impl FaderValue {
 pub enum Event {
     ButtonPressed { button: Button, is_down: bool },
     KnobPressed { knob: Knob, is_down: bool },
-    KnobTurned { knob: Knob, delta: i8 },
+    KnobTurned { knob: Knob, delta: i32 },
     FaderMoved { value: FaderValue },
 }
 
@@ -273,16 +274,13 @@ impl TryFrom<&[u8]> for Event {
 
         match bytes {
             &[0xb0, controller_num, value] => {
-                let delta = if value >= 64 {
-                    -((value - 64) as i8)
-                } else {
-                    value as i8
-                };
+                let value = value as i32;
+                let delta = if value >= 64 { -(value - 64) } else { value };
 
                 Ok(KnobTurned {
                     knob: Knob::from_midi(controller_num - 0x0f)
                         .context("unknown controller number for knob")?,
-                    delta,
+                    delta: delta as i32,
                 })
             }
             &[0xe8, _, value] => Ok(Event::FaderMoved {
