@@ -2,6 +2,7 @@ use anyhow::Result;
 use autopilot::key::Flag::{Control, Meta, Shift};
 use autopilot::key::{Code, KeyCode};
 use futures::StreamExt;
+use std::time::{Duration, SystemTime};
 use tracing::{debug, error};
 use xtouchmini::keyboard;
 use xtouchmini::vtubestudio::Param;
@@ -29,19 +30,35 @@ async fn main() -> Result<()> {
     }
 
     let mut context = Context { controller, vtube };
+    let mut timestamp = SystemTime::UNIX_EPOCH;
 
     while let Some(event_opt) = stream.next().await {
         if let Ok(event) = event_opt {
+            let now = SystemTime::now();
+            let timestamp_delta = now.duration_since(timestamp)?;
+
             let is_connected = context.vtube.is_connected();
 
             debug!(event = ?event);
 
             let result = match event {
                 Event::KnobTurned { knob, delta } => {
-                    handle_knob(&mut context, knob, &KnobAction::Turned { delta }).await
+                    handle_knob(
+                        &mut context,
+                        timestamp_delta,
+                        knob,
+                        &KnobAction::Turned { delta },
+                    )
+                    .await
                 }
                 Event::KnobPressed { knob, is_down } => {
-                    handle_knob(&mut context, knob, &KnobAction::Pressed { is_down }).await
+                    handle_knob(
+                        &mut context,
+                        timestamp_delta,
+                        knob,
+                        &KnobAction::Pressed { is_down },
+                    )
+                    .await
                 }
                 Event::ButtonPressed { button, is_down } => {
                     handle_button(&mut context, button, is_down).await
@@ -61,6 +78,8 @@ async fn main() -> Result<()> {
                     .controller
                     .set_button(Button::Button16, ButtonLedState::On)?;
             }
+
+            timestamp = now;
         }
     }
 
@@ -106,11 +125,16 @@ async fn handle_fader(context: &mut Context, value: FaderValue) -> Result<()> {
     Ok(())
 }
 
-async fn handle_knob(context: &mut Context, knob: Knob, action: &KnobAction) -> Result<()> {
+async fn handle_knob(
+    context: &mut Context,
+    timestamp_delta: Duration,
+    knob: Knob,
+    action: &KnobAction,
+) -> Result<()> {
     if context.controller.state().button(Button::LayerA).is_on() {
-        handle_knob_layer_a(context, knob, action).await?;
+        handle_knob_layer_a(context, timestamp_delta, knob, action).await?;
     } else {
-        handle_knob_default(context, knob, action).await?;
+        handle_knob_default(context, timestamp_delta, knob, action).await?;
     }
 
     if let KnobAction::Turned { delta } = action {
@@ -120,21 +144,30 @@ async fn handle_knob(context: &mut Context, knob: Knob, action: &KnobAction) -> 
     Ok(())
 }
 
-async fn handle_knob_default(context: &mut Context, knob: Knob, action: &KnobAction) -> Result<()> {
+async fn handle_knob_default(
+    _context: &mut Context,
+    timestamp_delta: Duration,
+    knob: Knob,
+    action: &KnobAction,
+) -> Result<()> {
     use KnobAction::*;
 
-    let prev = context.controller.state().knob(knob).value;
-
     match (knob, action) {
-        (Knob::Knob1, Turned { delta }) => {
-            let friction = 4;
-            let normalized_delta = prev % friction + *delta;
-
-            if normalized_delta >= friction {
+        (Knob::Knob1, Turned { delta }) if timestamp_delta.as_millis() > 40 => {
+            if *delta > 0 {
                 autopilot::key::tap(&Code(KeyCode::Tab), &[Control], 0, 0);
-            } else if normalized_delta < 0 {
+            } else {
                 autopilot::key::tap(&Code(KeyCode::Tab), &[Control, Shift], 0, 0);
             }
+        }
+        (Knob::Knob2, Turned { delta }) => {
+            use autopilot::mouse::ScrollDirection::{Down, Up};
+            let direction = if *delta > 0 { Down } else { Up };
+
+            autopilot::mouse::scroll(direction, 1);
+        }
+        (Knob::Knob2, Pressed { is_down: true }) => {
+            keyboard::tap_key(KeyCode::Home);
         }
         _ => {}
     }
@@ -142,7 +175,12 @@ async fn handle_knob_default(context: &mut Context, knob: Knob, action: &KnobAct
     Ok(())
 }
 
-async fn handle_knob_layer_a(context: &mut Context, knob: Knob, action: &KnobAction) -> Result<()> {
+async fn handle_knob_layer_a(
+    context: &mut Context,
+    _timestamp_delta: Duration,
+    knob: Knob,
+    action: &KnobAction,
+) -> Result<()> {
     use KnobAction::*;
 
     match (knob, action) {
