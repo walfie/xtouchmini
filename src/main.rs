@@ -324,7 +324,6 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
             Button::Button2 => keyboard::type_text("🔜"),
             Button::Button3 => keyboard::type_text("👀"),
             Button::Button4 => keyboard::type_text("🙇"),
-            Button::Button16 => keyboard::tap_key(KeyCode::Return),
             Button::Button8 => {
                 // Find YouTube tab in Chrome, and focus on the chat input field
                 osascript::JavaScript::new(include_str!("focus-youtube.js")).execute()?;
@@ -332,6 +331,13 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
             Button::Button9 => {
                 autopilot::key::tap(&Code(KeyCode::Space), &[Meta, Control], 0, 0);
             }
+            Button::Button11 => {
+                autopilot::key::tap(&Code(KeyCode::Tab), &[Control, Shift], 0, 0);
+            }
+            Button::Button12 => {
+                autopilot::key::tap(&Code(KeyCode::Tab), &[Control], 0, 0);
+            }
+            Button::Button16 => keyboard::tap_key(KeyCode::Return),
 
             _ => {}
         }
