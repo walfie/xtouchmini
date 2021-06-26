@@ -258,6 +258,22 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
         return Ok(());
     }
 
+    if matches!(button, Button::LayerA | Button::LayerB) {
+        context.controller.negate_button(button)?;
+    } else if context.controller.state().button(Button::LayerA).is_on() {
+        handle_button_layer_a(context, button, is_down).await?;
+    } else {
+        handle_button_default(context, button, is_down).await?;
+    }
+
+    Ok(())
+}
+
+async fn handle_button_layer_a(
+    context: &mut Context,
+    button: Button,
+    _is_down: bool,
+) -> Result<()> {
     async fn set_expression(context: &mut Context, button: Button, value: f64) -> Result<()> {
         use Button::*;
 
@@ -281,66 +297,70 @@ async fn handle_button(context: &mut Context, button: Button, is_down: bool) -> 
         Ok(())
     }
 
-    if matches!(button, Button::LayerA | Button::LayerB) {
-        context.controller.negate_button(button)?;
-    } else if context.controller.state().button(Button::LayerA).is_on() {
-        match button {
-            Button::Button1 => set_expression(context, button, 1.0).await?, // Sad
-            Button::Button2 => set_expression(context, button, 2.0).await?, // Angry
-            Button::Button3 => set_expression(context, button, 3.0).await?, // Shock
-            Button::Button4 => set_expression(context, button, 4.0).await?, // Smug
-            Button::Button5 => set_expression(context, button, 5.0).await?, // Excited
-            Button::Button6 => set_expression(context, button, 6.0).await?, // Crying
-            Button::Button7 => context.vtube.toggle_hotkey(2).await?,       // Dance
-            Button::Button8 => context.vtube.toggle_hotkey(3).await?,       // Dab
-            Button::Button9 => {
-                let was_frowning = context.vtube.param(Param::TongueOut) == 1.0;
+    match button {
+        Button::Button1 => set_expression(context, button, 1.0).await?, // Sad
+        Button::Button2 => set_expression(context, button, 2.0).await?, // Angry
+        Button::Button3 => set_expression(context, button, 3.0).await?, // Shock
+        Button::Button4 => set_expression(context, button, 4.0).await?, // Smug
+        Button::Button5 => set_expression(context, button, 5.0).await?, // Excited
+        Button::Button6 => set_expression(context, button, 6.0).await?, // Crying
+        Button::Button7 => context.vtube.toggle_hotkey(2).await?,       // Dance
+        Button::Button8 => context.vtube.toggle_hotkey(3).await?,       // Dab
+        Button::Button9 => {
+            let was_frowning = context.vtube.param(Param::TongueOut) == 1.0;
 
-                let (value, state) = if was_frowning {
-                    (0.0, ButtonLedState::Off)
-                } else {
-                    (1.0, ButtonLedState::On)
-                };
+            let (value, state) = if was_frowning {
+                (0.0, ButtonLedState::Off)
+            } else {
+                (1.0, ButtonLedState::On)
+            };
 
-                context.vtube.set_param(Param::TongueOut, value).await?;
-                context.controller.set_button(button, state)?;
-            }
-            Button::Button10 => {
-                // Toggle sunglasses
-                context.vtube.toggle_hotkey(1).await?;
-                context.controller.negate_button(button)?;
-            }
-            Button::Button16 => {
-                // Reset expressions
-                context.vtube.toggle_hotkey(8).await?;
-            }
-            _ => {}
+            context.vtube.set_param(Param::TongueOut, value).await?;
+            context.controller.set_button(button, state)?;
         }
-
-        context.vtube.refresh_params().await?;
-    } else {
-        match button {
-            Button::Button1 => keyboard::type_text("👏"),
-            Button::Button2 => keyboard::type_text("🔜"),
-            Button::Button3 => keyboard::type_text("👀"),
-            Button::Button4 => keyboard::type_text("🙇"),
-            Button::Button8 => {
-                // Find YouTube tab in Chrome, and focus on the chat input field
-                osascript::JavaScript::new(include_str!("focus-youtube.js")).execute()?;
-            }
-            Button::Button9 => {
-                autopilot::key::tap(&Code(KeyCode::Space), &[Meta, Control], 0, 0);
-            }
-            Button::Button11 => {
-                autopilot::key::tap(&Code(KeyCode::Tab), &[Control, Shift], 0, 0);
-            }
-            Button::Button12 => {
-                autopilot::key::tap(&Code(KeyCode::Tab), &[Control], 0, 0);
-            }
-            Button::Button16 => keyboard::tap_key(KeyCode::Return),
-
-            _ => {}
+        Button::Button10 => {
+            // Toggle sunglasses
+            context.vtube.toggle_hotkey(1).await?;
+            context.controller.negate_button(button)?;
         }
+        Button::Button16 => {
+            // Reset expressions
+            context.vtube.toggle_hotkey(8).await?;
+        }
+        _ => {}
+    }
+
+    context.vtube.refresh_params().await?;
+
+    Ok(())
+}
+
+async fn handle_button_default(
+    _context: &mut Context,
+    button: Button,
+    _is_down: bool,
+) -> Result<()> {
+    match button {
+        Button::Button1 => keyboard::type_text("👏"),
+        Button::Button2 => keyboard::type_text("🔜"),
+        Button::Button3 => keyboard::type_text("👀"),
+        Button::Button4 => keyboard::type_text("🙇"),
+        Button::Button8 => {
+            // Find YouTube tab in Chrome, and focus on the chat input field
+            osascript::JavaScript::new(include_str!("focus-youtube.js")).execute()?;
+        }
+        Button::Button9 => {
+            autopilot::key::tap(&Code(KeyCode::Space), &[Meta, Control], 0, 0);
+        }
+        Button::Button11 => {
+            autopilot::key::tap(&Code(KeyCode::Tab), &[Control, Shift], 0, 0);
+        }
+        Button::Button12 => {
+            autopilot::key::tap(&Code(KeyCode::Tab), &[Control], 0, 0);
+        }
+        Button::Button16 => keyboard::tap_key(KeyCode::Return),
+
+        _ => {}
     }
 
     Ok(())
